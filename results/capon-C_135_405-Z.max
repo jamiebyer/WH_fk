@@ -1,0 +1,281 @@
+# MAX FORMAT RELEASE 1.1
+#
+# BEGIN COMMAND LINE ARGUMENTS
+#
+/home/jbyer/Documents/uoc/repos/WH_fk/geopsypack-src-3.5.2/bin/geopsy-fk -db Mirandola.gpy -group C_135_405-Z $*
+exit $?
+#
+# END COMMAND LINE ARGUMENTS
+#
+#
+# BEGIN SOFTWARE VERSION
+#
+  Qt                  6.8.2
+  QGpCoreTools        2.5.0 from 3.5.2
+      (commit 8e7f9523665497a6e0787d4f623634cee8957aff)
+  QGpCoreMath         1.5.2 from 3.5.2
+      (commit 45a832cd27865662e9e0c63081f3a1d32999f668)
+  QGpCoreWave         2.3.0 from 3.5.2
+      (commit 5f8fb775da4b2ffe1d609b5d5eea1540b835f8af)
+  QGpCompatibility    1.2.0 from 3.5.2
+      (commit a43f1ead0e7e26355ad8661e59feda87db583379)
+  GeopsyCore          4.5.1 from 3.5.2
+      (commit e32288e5b456ea5f2c7ed80d7f3238414692b3e4)
+  DinverCore          1.4.0 from 3.5.2
+      (commit 2c5867d8a3d3afc8b55dab6683c45e857f3f1206)
+  DinverDCCore        2.3.0 from 3.5.2
+      (commit dd36cd8af8c63c8dba6be1f3ab842ea7535433f4)
+  QGpCoreStat         1.3.0 from 3.5.2
+      (commit e9187dc7eb30087d0c28114d969e7cc341f348c4)
+  ArrayCore           4.2.1 from 3.5.2
+      (commit bced9454c16a9fc3eb0bc5b744a49991f6dca7a2)
+  geopsy-fk           1.0.5 from 3.5.2
+      (commit a63856f10623884f3829f6b557549d6c66222400)
+#
+# END SOFTWARE VERSION
+#
+#
+# BEGIN STATION LIST
+#
+0.00 0.00 CN01
+217.34 302.07 CN02
+386.02 14.16 CN03
+-257.41 -166.41 CN04
+-362.36 182.01 CN05
+-77.33 408.01 CN08
+120.86 -76.71 CN09
+129.83 31.65 CN10
+-96.66 -105.19 CN11
+38.67 132.35 CN12
+-83.89 112.35 CN13
+256.12 -315.96 CN14
+-91.77 -381.87 CN15
+25.57 -134.09 CN16
+-135.64 5.44 IR03
+#
+# END STATION LIST
+#
+#
+# BEGIN PARAMETERS
+#
+# Version 0: all files generated with releases before 20170901 (default for input)
+PARAMETERS_VERSION=1
+# TYPEs:
+#   - Signal: from the start or to the end of signal (TEXT are useless)
+#   - Delta: a fixed duration counted from the start or the end (e.g. TEXT=1h).
+#   - Pick: from or to a time pick (TEXT=time pick name).
+#   - Absolute: from or to a fixed time (e.g. TEXT=20170314115338.00)
+FROM_TIME_TYPE=Signal
+FROM_TIME_TEXT=0s
+# TYPEs: Signal, Delta, Absolute
+TO_TIME_TYPE=Signal
+TO_TIME_TEXT=0s
+REFERENCE=
+# TYPEs: Exactly, AtLeast, FrequencyDependent
+WINDOW_LENGTH_TYPE=FrequencyDependent
+PERIOD_COUNT=50
+WINDOW_MAX_COUNT=0
+# Length of time windows are adjusted to avoid a prime number of samples which
+# slows down the FFT computation. Usually a maximum prime of 11 in the prime factorization
+# of the number of samples is a good compromise between the speed and the lenght inaccuracy
+# Leave as zero to allow any prime number factorization.
+WINDOW_MAXIMUM_PRIME_FACTOR=11
+BAD_SAMPLE_TOLERANCE (s)=0
+BAD_SAMPLE_GAP (s)=0
+WINDOW_OVERLAP (%)=0
+# TYPEs: NoSampleThreshold, RelativeSampleThreshold, AbsoluteSampleThreshold
+BAD_SAMPLE_THRESHOLD_TYPE=NoSampleThreshold
+ANTI-TRIGGERING_ON_RAW_SIGNAL (y/n)=n
+ANTI-TRIGGERING_ON_FILTERED_SIGNAL (y/n)=n
+# Start a time window for each seismic event available inside the time range.
+SEISMIC_EVENT_TRIGGER (y/n)=n
+SEISMIC_EVENT_DELAY (s)=-0.1
+MINIMUM_FREQUENCY=0.421941
+MAXIMUM_FREQUENCY=100
+# Either 'Linear', 'Log' or 'Inverse'
+SCALE_TYPE_FREQUENCY=Log
+# Number of samples is either set to a fixed value ('Count') or through a step between samples ('Step')'
+STEP_TYPE_FREQUENCY=Step
+SAMPLES_NUMBER_FREQUENCY=221
+# STEP=difference between two successive samples for 'linear' scales
+# STEP=ratio between two successive samples for 'log' scales
+# STEP=difference between two successive inverse samples for 'inverse' scales
+STEP_FREQUENCY=1.025
+# Overlap of blocks is controled by WINDOW_OVERLAP. If this option is set to 'y', overlapping 
+# blocks are skipped. Do not confuse block overlap and block set overlap (see STATISTIC_MAX_OVERLAP).
+BLOCK_OVERLAP(y/n)=n
+# If BLOCK_COUNT is null, BLOCK_COUNT=BLOCK_COUNT_FACTOR*<number of stations>
+BLOCK_COUNT=0
+BLOCK_COUNT_FACTOR=2
+# If STATISTIC_COUNT is not null, approx. STATISTIC_COUNT estimates par frequency
+STATISTIC_COUNT=50
+# If STATISTIC_MAX_OVERLAP=100%, successive statistics can be computed on overlapping block sets
+# If STATISTIC_MAX_OVERLAP=0%, successive statistics are computed on non-overlapping block sets
+STATISTIC_MAX_OVERLAP(%)=0
+TAPER_WINDOW_TYPE=Tukey
+TAPER_WINDOW_REVERSED=n
+TAPER_WINDOW_ALPHA=0.2
+# Gaussian band width from f*(1-bw) to f*(1+bw), f*bw=stddev
+FREQ_BAND_WIDTH=0
+# Required when using short and fixed length time windows, avoid classical oblique lines visible in the results
+# when the number of frequency samples is higher than the number of points in the spectra.
+OVER_SAMPLING_FACTOR=1
+# A station is selected for processing only if it is available over a duration greater or equal to
+# SELECT_DURATION_FACTOR*[total required duration]. The factor can vary from 0 to 1
+SELECT_DURATION_FACTOR=0
+# A station is selected for processing only if it is located at less than SELECT_ARRAY_RADIUS
+# from SELECT_ARRAY_CENTER. SELECT_ARRAY_CENTER is the X, Y coordinates of the center or the name of a station.
+SELECT_ARRAY_CENTER=
+SELECT_ARRAY_RADIUS=0
+# Assuming that the north of sensors is aligned to the magnetic north and sensor coordinates to UTM grid,
+# relative coordinates between stations are calculated with a correction for the difference between the
+# geographical and the local UTM norths and for the magnetic declination. The later can be, for instance,
+# calculated at https://www.ngdc.noaa.gov/geomag-web/#declination
+# The value must be in degrees (positive for eastwards and negative for westwards).
+MAGNETIC_DECLINATION=0
+OUTPUT_BASE_NAME=
+#
+#
+#     FK method
+#
+#
+# Process types:
+#  [Comp is the required components]
+#  Keyword                  Comp Comments
+#  Conventional             Z    Conventional FK processing.
+#  ConventionalRadial       EN   Conventional FK processing for radial projections.
+#  ConventionalTransverse   EN   Conventional FK processing for transverse projections.
+#  ConventionalRayleigh     ENZ  Conventional FK processing for radial projections.
+#  Capon                    Z    High resolution FK processing (Capon, 1969).
+#  CaponRadial              EN   High resolution FK processing (Capon, 1969) for radial projections.
+#  CaponTransverse          EN   High resolution FK processing (Capon, 1969) for transverse projections.
+#  RTBF                     ENZ  According to Wathelet et al (2018).
+#                                Cross spectrum made of radial projections and vertical.
+#                                Product of radial and vertical ellipticity steering.
+#  ARTBF                    ENZ  RTBF with all-component ellipticity steering.
+#                                Cross spectrum made of radial projections and vertical.
+#  PoggiVertical            ENZ  According Poggi et al. (2010)
+#                                k picked from vertical processing.
+#  PoggiRadial              ENZ  According Poggi et al. (2010)
+#                                k picked from radial processing.
+#  ARDS                     ENZ  Rayleigh Direct Steering with All-component ellipticity steerting.
+#                                Cross spectrum made of raw components E, N and Z.
+#                                Radial projections included in the steering matrix.
+#  LDS3                     ENZ  Love Direct Steering.
+#                                Cross spectrum made of raw components E, N and Z.
+#                                Transverse projections included in the steering matrix.
+#  LDS2                     EN   Love Direct Steering.
+#                                Cross spectrum made of raw components E and N.
+#                                Transverse projections included in the steering matrix.
+#  Experimental modes:
+#  RTBFFixedEll             ENZ  Same as RTBF but ellipticity is fixed.
+#                                FIXED_ELLIPTICITY_FILE_NAME must be provided.
+#  ActiveConventional       Z    Conventional FK processing for active sources.
+#  ActiveRTBF               ENZ  RTBF for active sources
+#                                Cross spectrum made of radial and transverse projections.
+PROCESS_TYPE=Capon
+# Correction can be: None, OneComponent, ThreeComponent or Mixed
+ELLIPTICITY_CORRECTION=None
+DAMPING_FACTOR=0
+# Iterative bright spot removal: the cross-spectrum for the best peak
+# is reconstructed and removed from the cross-spectral matrix. Another best
+# peak is searched with the modified cross-spectral matrix. The process is
+# repeated until removing the expected number of bright spots.
+BRIGHT_SPOTS=0
+# If provided and PROCESS_TYPE==RTBF, ARTBF or ARDS, the ellipticity is forced to the provided curve.
+# The file must contain two columns: frequency and signed ellipticity.
+# Provided sampling must not necessarily match the processing sampling frequency, linear interpolation is used.
+# Better for precision if the two sampling match.
+# To generate a synthetic curve: gpell M2.1.model -one-mode -R 1 -min 0.5 -max 50 -n 187 > curve.txt
+FIXED_ELLIPTICITY_FILE_NAME=
+# Minimum distance between source and receiver (for active source only)
+MINIMUM_DISTANCE=0
+# Maximum distance between source and receiver (for active source only)
+MAXIMUM_DISTANCE=inf
+SOURCE_GRID_STEP=1
+SOURCE_GRID_SIZE=0
+# Introduces errors in sensor orientation to test the robustness of methods.
+# Provides a list of names and values like: STATION_NAME1:error,STATION_NAME2:error,... in degrees.
+# To set random perturbations to each sensor lower than a threshold value, use '@RANDOM:error' keyword.
+# To set a fixed value for all station use '@ALL:error'.
+SENSOR_ORIENTATION_ERRORS (deg)=@ALL:0
+# Introduces errors in sensor position to test the robustness of methods.
+# Provides a list of names and values like: STATION_NAME1:dx dy,STATION_NAME2:dx dy,....
+# To set random perturbations to each sensor lower than a threshold value, use '@RANDOM:dx dy' keyword.
+# To set a fixed value for all station use '@ALL:dx dy'.
+SENSOR_POSITION_ERRORS (m)=@ALL:0 0
+# Experimental join processing of several arrays
+# Several ARRAY can be defined with a list of station names
+#
+#
+#     Wavenumber grid
+#
+#
+# Wavenumber fine gridding used as a cache for the FK maps
+CACHE_GRID_STEP (rad/m)=0
+# If CACHE_GRID_STEP is null, GRID_STEP is computed from K_MIN*CACHE_GRID_STEP_FACTOR.
+CACHE_GRID_STEP_FACTOR=0.05
+# Wavenumber coarse gridding used for searching maxima of the FK maps
+GRID_STEP (rad/m)=0
+# If GRID_STEP is null, GRID_STEP is computed from K_MIN*GRID_STEP_FACTOR.
+GRID_STEP_FACTOR=0.1
+GRID_SIZE (rad/m)=0
+# If GRID_SIZE is null, GRID_SIZE is computed from K_MAX*GRID_SIZE_FACTOR.
+GRID_SIZE_FACTOR=2
+# Effective GRID_STEP is 0.000870036.
+# Effective GRID_SIZE is 0.0967978.
+# Minimum velocity of the searched maxima of the FK map
+MIN_V (m/s)=50
+# Maximum velocity of the searched maxima of the FK map
+MAX_V (m/s)=3500
+# Minimum azimuth of the searched maxima of the FK map (clockwise from North)
+MIN_AZIMUTH (deg.)=0
+# Maximum azimith of the searched maxima of the FK map (clockwise from North)
+MAX_AZIMUTH (deg.)=0
+# Theoretical Kmin and Kmax computed from array geometry
+# Used only for post-processing
+K_MIN (rad/m)=0.00870036
+K_MAX (rad/m)=0.0483989
+#
+#
+#     Peak picking
+#
+#
+# Inversion method used for getting FK peaks: Gradient or RefinedGrid
+INVERSION_METHOD=RefinedGrid
+# When refining a peak these two precision thresholds define the end conditions.
+VELOCITY_RELATIVE_PRECISION=0.001
+ELLIPTICITY_ABSOLUTE_PRECISION (deg)=0.001
+N_MAXIMA=0
+N_MAXIMA_FACTOR=1
+ABSOLUTE_THRESHOLD=0
+RELATIVE_THRESHOLD (%)=90
+SAVE_UNDEFINED_ELLIPTICITIES=y
+SORT_RESULT_VALUES=y
+EXPORT_ALL_FK_GRIDS=n
+#
+#
+#     Sensor orientation (only for PROCESS_TYPE=SensorOrientation)
+#
+#
+SENSOR_ORIENTATION_APERTURE_ANGLE=180
+SENSOR_ORIENTATION_MAXIMUM_RADIUS=0
+SENSOR_ORIENTATION_MAXIMUM_CORRECTION=20
+SENSOR_ORIENTATION_MAXIMUM_ITERATIONS=100
+#
+# END PARAMETERS
+#
+#
+# BEGIN LOG
+#
+Process started at 2025-03-06 11:02:05
+
+Process ended at 2025-03-06 11:02:08
+Process run in 00:00:03 (2 threads)
+#
+# END LOG
+#
+#
+# BEGIN DATA
+#
+# abs_time frequency slowness azimuth ellipticity Rz/N Rh/N power valid
