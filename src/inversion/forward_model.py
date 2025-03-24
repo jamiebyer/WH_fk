@@ -1,81 +1,9 @@
 import numpy as np
-from disba import PhaseDispersion, Ellipticity
-import matplotlib.pyplot as plt
-
-
-def plot_velocity_model():
-    pass
-
-
-def dispersion_curve():
-    # Velocity model
-    # thickness, Vp, Vs, density
-    # km, km/s, km/s, g/cm3
-    # velocity_model = np.array([[10.0, 7.00, 3.50, 2.00], [10.0, 6.80, 3.40, 2.00]])
-    velocity_model = np.array([[10.0, 5.50, 3.50, 2.00], [10.0, 7.80, 3.40, 2.00]])
-
-    # Periods must be sorted starting with low periods
-    f = np.logspace(-2, 1, 1000)
-    # t = np.logspace(0.0, 3.0, 100)
-    t = np.flip(1 / f)
-
-    pd = PhaseDispersion(*velocity_model.T)
-    f_0 = pd(t, mode=0, wave="rayleigh")
-    f_1 = pd(t, mode=1, wave="rayleigh")
-    f_2 = pd(t, mode=2, wave="rayleigh")
-
-    # print(f_0[0])
-
-    """
-    MINIMUM_FREQUENCY=0.1
-    MAXIMUM_FREQUENCY=25
-    STEP_TYPE_FREQUENCY=Count
-    SAMPLES_NUMBER_FREQUENCY=100
-    GRID_STEP (rad/m)=0.001
-    GRID_SIZE (rad/m)=0.5
-    """
-
-    # pd returns a namedtuple (period, velocity, mode, wave, type)
-
-    # velocity_model = np.array([[10.0, 5.50, 3.50, 2.00], [10.0, 7.80, 3.40, 2.00]])
-    plt.subplot(2, 1, 1)
-    plt.axhline(0, c="black")
-    plt.axhline(10, c="black")
-    plt.axhline(20, c="black")
-    plt.plot(velocity_model, [10, 20])
-    plt.ylabel("depth")
-
-    plt.subplot(2, 1, 2)
-    # plt.plot(f_0[0]   , f_0[1])
-    plt.plot(1 / f_0[0], f_0[1])
-    plt.xlabel("frequency")
-    plt.ylabel("velocity")
-    plt.xscale("log")
-    plt.yscale("log")
-    plt.show()
-
-
-def ellipticity_curve():
-    ell = Ellipticity(*velocity_model.T)
-    rel = ell(t, mode=0)
-
-
-def simulated_data():
-    # simulate curve
-    # add noise
-    pass
-
-
-#######
-#######
-#######
-
-
-import numpy as np
 from disba import PhaseDispersion
 from disba._exception import DispersionError
 import pandas as pd
 from scipy import interpolate
+import matplotlib.pyplot as plt
 
 np.complex_ = np.complex64
 
@@ -108,11 +36,12 @@ class Model:
         :param poisson_ratio: value for poisson's ratio used to approximate vel_p from vel_s
         :param density_params: birch params used to estimate the density profile of the model
         """
+
         self.n_layers = n_layers
         self.n_data = n_data
         self.periods = periods
 
-        self.param_bounds = param_bounds
+        # self.param_bounds = param_bounds
         self.poisson_ratio = poisson_ratio
         self.density_params = density_params
 
@@ -228,7 +157,7 @@ class Model:
             raise e
 
 
-class TrueModel(Model):
+class SyntheticModel(Model):
     def __init__(self, *args):
         """
         Generate true model, which will be used to create simulated observed pd curves.
@@ -267,6 +196,111 @@ class TrueModel(Model):
             self.n_data
         )
         return model_params
+
+    def setup_scene(
+        n_data,
+        poisson_ratio=0.265,
+        density_params=[540.6, 360.1],
+        n_layers=10,
+        layer_bounds=[5e-3, 15e-3],
+        vel_s_bounds=[2, 6],
+        sigma_pd_bounds=[0, 1],
+        freq_range=[2.5, 1.5],
+    ):
+        """
+        Define parameter bounds. Create simulated true model and observed data.
+
+        :param n_data: Number of simulated observed data.
+        :param poisson_ratio: poisson's ratio to use to calculate vel_p from vel_s.
+        :param density_params: birch params to use to estimate density depth profile.
+        :param n_layers: Number of layers in model.
+
+        # Bounds of search (min, max)
+        :param layer_bounds: (km)
+        :param vel_s_bounds: (km/s)
+        :param sigma_pd_bounds:
+        :param freq_range: range of frequencies for simulated data. exponent values used to make a range of frequencies. (Hz)
+        """
+
+        # *** should there be bounds on density and vel_p even though they are calculated from vel_s, thickness ***
+        # density_bounds = [2, 6]
+        # vel_p_bounds = [3, 7],
+
+        # reshape bounds to be the same shape as params
+        param_bounds = np.concatenate(
+            ([layer_bounds] * n_layers, [vel_s_bounds] * n_layers, [sigma_pd_bounds]),
+            axis=0,
+        )
+
+        # add the range of the bounds to param_bounds as a third column (min, max, range)
+        range = param_bounds[:, 1] - param_bounds[:, 0]
+        param_bounds = np.column_stack((param_bounds, range))
+
+        # frequencies for simulated observed data
+        # *** how would this data be collected? what is the spacing between frequencies? ***
+        # *** frequencies will be input from the data. total depth of the model should be similar to data depth ***
+        freqs = np.logspace(freq_range[0], freq_range[1], n_data)  # (Hz)
+
+        true_model = TrueModel(
+            n_layers,
+            n_data,
+            freqs,
+            param_bounds,
+            poisson_ratio,
+            density_params,
+        )
+
+        return param_bounds, true_model
+
+
+class DataModel(Model):
+    def __init__(self, *args):
+        """
+        Generate true model, which will be used to create simulated observed pd curves.
+
+        :param n_data: Number of observed data to simulate.
+        :param layer_bounds: [min, max] for layer thicknesses. (m)
+        :param poisson_ratio:
+        :param density_params: Birch params to simulate density profile.
+        """
+
+        super().__init__(*args)  # generates model params and data
+
+    def read_observed_data(self):
+        """
+        read dispersion curve
+        """
+
+        in_path = "./data/WH01/WH01_curve_fine.txt"
+        names = ["frequency", "slowness", "unknown_1", "unknown_2", "valid"]
+        df = pd.read_csv(in_path, sep="\s+", names=names)
+
+        plt.scatter(df["frequency"], 1 / df["slowness"])
+        plt.show()
+
+        return model_params
+
+
+class StartingModel(Model):
+    def __init__(self, *args):
+        """
+        Generate true model, which will be used to create simulated observed pd curves.
+
+        :param n_data: Number of observed data to simulate.
+        :param layer_bounds: [min, max] for layer thicknesses. (m)
+        :param poisson_ratio:
+        :param density_params: Birch params to simulate density profile.
+        """
+
+        super().__init__(*args)  # generates model params and data
+
+    def generate_starting_model(self):
+        # either generated, or optimized
+
+        return model_params
+
+    def optimize_starting_model():
+        pass
 
 
 class ChainModel(Model):
@@ -532,7 +566,6 @@ class ChainModel(Model):
         """
         Jac = self.get_jacobian()
         # Scale columns of Jacobian for stability
-        # *** validate ***
         Jac = Jac * self.param_bounds[:, 2]  # multiplying by parameter range
 
         # Uniform bounded priors of width Δmi are approximated by taking C_p to be a diagonal matrix with
@@ -541,7 +574,7 @@ class ChainModel(Model):
         cov_prior_inv = np.diag(self.n_params * [1 / variance])
 
         # the data covariance matrix
-        # *** validate this sigma_model ***
+        # compute data covariance matrix using beta and the estimated model sigma
         cov_data_inv = np.diag(self.n_data * [self.beta / self.sigma_model**2])
 
         cov_cur = (
@@ -553,11 +586,6 @@ class ChainModel(Model):
         # parameter variance in PC space (?)
         rot_mat, s, _ = np.linalg.svd(cov_cur)
         sigma_model = 1 / (2 * np.sqrt(np.abs(s)))  # PC standard deviations
-
-        print("cov_cur", cov_cur.shape)
-        print("rot_mat", rot_mat.shape)
-        print("s", s.shape)
-        print("sigma_model", sigma_model.shape)
 
         return sigma_model, rot_mat
 
@@ -584,14 +612,15 @@ class ChainModel(Model):
     def update_model_hist(self):
         """
         updating the hist for this model, which stores parameter values from all the models
-
-        :param param_bounds:
         """
+        # The bins for this hist should be the param bounds
         for ind in range(self.n_params):
+            counts, bins = np.histogram(x, n_bins)
+
             # getting bins for the param,
-            edge = self.bins[:, ind]
-            idx_diff = np.argmin(abs(edge - self.model_params[ind]))
-            self.model_hist[idx_diff, ind] += 1
+            # edge = self.bins[:, ind]
+            # idx_diff = np.argmin(abs(edge - self.model_params[ind]))
+            # self.model_hist[idx_diff, ind] += 1
 
     def update_covariance_matrix(self, update_rot_mat):
         """
@@ -608,6 +637,7 @@ class ChainModel(Model):
 
         # *** validate this ****
         mean_model = self.mean_model_sum / self.n_cov
+
         self.cov_mat_sum = self.cov_mat_sum + np.outer(
             np.transpose(normalized_model - mean_model),
             normalized_model - mean_model,

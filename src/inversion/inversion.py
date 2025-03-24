@@ -9,26 +9,21 @@ import xarray as xr
 class Inversion:
     def __init__(
         self,
-        n_data,
-        freqs,
-        data_obs,
-        param_bounds={
-            "layer": [5e-3, 15e-3],
-            "vel_s": [0, 4.5],
-            "sigma_pd": [0, 1],
-            "density": [0, 1000],
-            "vel_p": [0, 7],
-        },
-        n_layers=2,
-        poisson_ratio=0.265,
-        density_params=[540.6, 360.1],  # *** check units
-        n_chains=2,
-        beta_spacing_factor=1.15,
-        model_variance=12,
-        n_bins=200,
-        n_burn_in=10000,
-        n_keep=2000,  # index for writing it down
-        n_rot=40000,  # Do at least n_rot steps after nonlinear rotation starts
+        model,
+        # n_data,
+        # periods,
+        # data_obs,
+        param_bounds,
+        # n_layers,
+        # poisson_ratio,
+        # density_params,
+        n_chains,
+        beta_spacing_factor,
+        model_variance,
+        n_bins,
+        n_burn_in,
+        n_keep,
+        n_rot,
     ):
         """
         :param n_data: number of data observed.
@@ -46,12 +41,17 @@ class Inversion:
         :param n_keep: number of steps/iterations to save to file at a time. determines total number of steps.
         :param n_rot: number of steps to do after nonlinear rotation starts
         """
-        # parameters from data and scene
-        self.n_data = n_data
-        self.n_layers = n_layers
 
-        self.periods = np.flip(1 / freqs)
-        self.data_obs = np.flip(data_obs)
+        """
+        run options:
+        - run with optimized starting model
+        - run with burn-in
+        - run with linearlization
+        - run with parallel tempering/ chains
+        """
+
+        # setting up model
+        self.model = model
         param_bounds = self.assemble_param_bounds(param_bounds)
 
         # parameters related to number of steps taken in random walk
@@ -73,28 +73,26 @@ class Inversion:
 
         # parameters for saving data
         self.n_bins = n_bins
-        self.swap_acc = 0
-        self.swap_prop = 0
-
         self.stored_results = {
             "params": [],
             "logL": [],
             "beta": [],
             "rot_mat": [],
             "sigma_model": [],
+            "swap_acc": [],
+            "swap_prop": [],
             "acc_rate": [],
         }
 
     def assemble_param_bounds(self, bounds):
-        # *** should there be bounds on density and vel_p even though they are calculated from vel_s, thickness ***
-        # density_bounds = [2, 6]
-        # vel_p_bounds = [3, 7],
-
+        # * this could be in a setter ****
         # reshape bounds to be the same shape as params
         param_bounds = np.concatenate(
             (
                 [bounds["layer"]] * self.n_layers,
                 [bounds["vel_s"]] * self.n_layers,
+                [bounds["vel_p"]] * self.n_layers,
+                [bounds["density"]] * self.n_layers,
                 [bounds["sigma_data_obs"]],
             ),
             axis=0,
@@ -117,9 +115,11 @@ class Inversion:
         # change beta steps vals based on acceptance rate
         # *** later could tune beta_spacing_factor as the inversion runs, looking at the acceptance rate every ~10 000 steps ***
 
+        if self.n_chains == 1:
+            return [1]
+
         # getting beta values to use for parallel tempering
         n_temps = self.n_chains
-
         # 1/4 to 1/2 of the chains should be beta=1.
         n_temps_frac = int(np.ceil(n_temps / 4))
         betas = np.zeros(n_temps, dtype=float)
@@ -145,8 +145,9 @@ class Inversion:
         :param poisson_ratio: value for poisson's ratio to pass to the chain model
         :param density_params: birch's parameters to pass to the chain model
         :param model_variance:
-        :param beta_spacing_factor"
+        :param beta_spacing_factor
         """
+
         # generate the starting models
         betas = self.get_betas(beta_spacing_factor)  # get values of beta
         chains = []
@@ -168,6 +169,170 @@ class Inversion:
             chains.append(model)
 
         self.chains = chains
+
+    def calc_E(self, m, d_obs, theta, sigma):
+        d_new = ref_coeff(m, theta)
+        E = np.sum((d_obs - d_new) ** 2) / (2 * sigma**2)
+        return E, d_new
+
+    def get_optimization_model(self):
+        # annealing schedule
+        # starting temperature
+        # >80-90% accepted initially
+
+        results = {
+            "temperature": [],
+            "acc_rate": [],
+            "misfit": [],
+            "model": [
+                [],
+                [],
+                [],
+                [],
+                [],
+            ],
+            "d_pred": [],
+        }
+
+        # random starting model
+        m = np.random.uniform(param_bounds[:, 0], param_bounds[:, 1])
+        E, _ = self.calc_E(m, d_obs, theta, sigma)
+
+        """
+        # temperature reduction factor
+        T_0 = 1e2
+        n_steps = 50
+        temps = np.logspace(2, 0, 500)
+        """
+
+        T_0 = 100  # Initial Temp
+        epsilon = 0.95  # Decayfactor of temperature
+        ts = 300  # Number of temperature steps
+        n_steps = 200  # Number of balancing steps at each temp
+
+        temps = np.zeros(ts)
+        temps[0] = T_0
+
+        for k in range(1, ts):
+            temps[k] = temps[k - 1] * epsilon
+
+        results["acc_rate"] = []
+        # reduce logarithmically
+        for T in temps:
+            results["acc_rate"].append([])
+            # number of steps at this temperature
+            for _ in range(n_steps):
+                # perturb each parameter
+                for param_ind in range(len(m)):
+                    # cauchy distribution
+                    eta = np.random.uniform(0, 1)
+
+                    gamma = (T / T_0) * np.tan(np.pi * (eta - 0.5))
+                    # m_new = m_try
+                    m_new = m.copy()
+
+                    perturb = gamma * scale_factor[param_ind]
+                    m_new[param_ind] = m_new[param_ind] + perturb
+
+                    E_new, d_new = calc_E(m_new, d_obs, theta, sigma)
+
+                    delta_E = E_new - E
+                    acc = False
+                    if (m_new[param_ind] >= param_bounds[param_ind][0]) and (
+                        m_new[param_ind] <= param_bounds[param_ind][1]
+                    ):
+                        if delta_E <= 0:
+                            m = m_new.copy()
+                            E = E_new
+                            acc = True
+                        else:
+                            xi = np.random.uniform(0, 1)
+                            if xi <= np.exp(-delta_E / T):
+                                m = m_new.copy()
+                                E = E_new
+                                acc = True
+
+                    results["acc_rate"][-1].append(acc)
+
+            results["temperature"].append(T)
+
+            results["model"][0].append(m[0])
+            results["model"][1].append(m[1])
+            results["model"][2].append(m[2])
+            results["model"][3].append(m[3])
+            results["model"][4].append(m[4])
+
+            results["misfit"].append(delta_E)
+            results["d_pred"].append(d_new)
+            results["acc_rate"][-1] = np.sum(results["acc_rate"][-1]) / len(
+                results["acc_rate"][-1]
+            )
+
+        return results, d_new, epsilon, n_steps
+
+    def get_mcmc_model(self, m_init, n_samples, scale_factor, theta, sigma):
+        results = {
+            "model": [
+                [],
+                [],
+                [],
+                [],
+                [],
+            ],
+            "misfit": [],
+            "acc": [],
+            "d_pred": [],
+        }
+
+        # uniform prior and
+        # symmetric proposal distribution
+
+        # acceptance is min{1, L(m')/L(m)}
+
+        m = m_init
+        E, _ = self.calc_E(m, d_obs, theta, sigma)
+        for _ in range(n_samples):
+            # perturb each parameter
+            m_try = m
+            for param_ind in range(len(m)):
+                # cauchy distribution
+                eta = np.random.uniform(0, 1)
+
+                gamma = np.tan(np.pi * (eta - 0.5))
+                m_new = m_try.copy()
+
+                m_new[param_ind] = m_try[param_ind] + gamma * scale_factor[param_ind]
+
+                E_new, d_new = self.calc_E(m_new, d_obs, theta, sigma)
+
+                delta_E = E_new - E
+                acc = False
+                if (
+                    m_new[param_ind] >= param_bounds[param_ind][0]
+                    and m_new[param_ind] <= param_bounds[param_ind][1]
+                ):
+                    if delta_E <= 0:
+                        m = m_new.copy()
+                        E = E_new
+                        acc = True
+                    else:
+                        xi = np.random.uniform(0, 1)
+                        if xi <= np.exp(-delta_E):
+                            m = m_new.copy()
+                            E = E_new
+                            acc = True
+
+                results["model"][0].append(m[0])
+                results["model"][1].append(m[1])
+                results["model"][2].append(m[2])
+                results["model"][3].append(m[3])
+                results["model"][4].append(m[4])
+
+                results["misfit"].append(delta_E)
+                results["acc"].append(acc)
+                results["d_pred"].append(d_new)
+
+        return results
 
     async def random_walk(
         self, max_perturbations, hist_conv, out_dir, scale_factor=1.3, save_burn_in=True

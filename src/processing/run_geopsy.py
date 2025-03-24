@@ -175,6 +175,20 @@ def plot_max_file(max_file):
     plt.show()
 
 
+def plot_dispersion_curve():
+    in_path = "./data/WH01/WH01_curve_fine.txt"
+
+    names = ["frequency", "slowness", "unknown_1", "unknown_2", "valid"]
+    df = pd.read_csv(in_path, sep="\s+", names=names)
+
+    plt.scatter(df["frequency"], 1 / df["slowness"])
+
+    plt.xscale("log")
+    plt.yscale("log")
+
+    plt.show()
+
+
 def run_geopsy():
     geopsy_fk_path = "./geopsypack-src-3.5.2/bin/geopsy-fk"
     gpviewmax_path = "./geopsypack-src-3.5.2/bin/max2curve"
