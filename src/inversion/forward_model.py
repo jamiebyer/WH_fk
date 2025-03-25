@@ -421,152 +421,110 @@ class ChainModel(Model):
     def get_derivatives(
         self,
         n_sizes,
-        size_scale,
-        init_step_size_scale,
         phase_vel_diff_bounds,
     ):
         """
         calculate the jacobian for the model
 
         :param n_sizes: number of step sizes to try
-        :param size_scale:
-        :param init_step_size_scale:
         :param phase_vel_diff_bounds:
         """
         # propose n_dm=50 step sizes. compute all for all params. find flat section and optimal derivative. add prior
         # estimate to make it stable finding where the derivative is flat to find best / stable value of the derivative
         # for the jacobian.
-        # *** validate, go over this again with n_data ***
         step_sizes = np.zeros((self.n_params, n_sizes))
+
+        # step size is a scaled from model params
         # set initial step size
         step_sizes[:, 0] = self.model_params * init_step_size_scale
-        model_derivatives = np.zeros((self.n_params, n_sizes, self.n_data))
+
+        # determine step sizes
+
+        model_derivatives = np.zeros((self.n_params, self.n_data, n_sizes))
 
         # estimate deriv for range of dm values
-        for size_ind in range(n_sizes):
-            model_pos = self.model_params + step_sizes[:, size_ind]
-            model_neg = self.model_params - step_sizes[:, size_ind]
+        for param_ind in range(self.n_params):
+            model_pos = self.model_params + step_sizes[param_ind, :]
+            model_neg = self.model_params - step_sizes[param_ind:, :]
 
-            for param_ind in range(self.n_params):
-                # *** double check these conditions... ***
-                model_pos[param_ind] = (
-                    model_pos[param_ind] + step_sizes[param_ind, size_ind]
+            model_pos[param_ind] = model_pos[param_ind] + step_sizes[param_ind, :]
+
+            try:
+                phase_vel_pos = self.forward_model(model_pos)
+                phase_vel_neg = self.forward_model(model_neg)
+
+                # calculate the change in phase velocity over change in model param
+                # unitless difference between positive and negative phase velocities
+                phase_vel_diff = np.abs(
+                    (phase_vel_pos - phase_vel_neg) / (phase_vel_pos + phase_vel_neg)
                 )
 
-                try:
-                    phase_vel_pos = self.forward_model(model_pos)
-                    phase_vel_neg = self.forward_model(model_neg)
-
-                    # calculate the change in phase velocity over change in model param
-                    # unitless difference between positive and negative phase velocities
-                    # ***
-                    phase_vel_diff = np.abs(
-                        (phase_vel_pos - phase_vel_neg)
-                        / (phase_vel_pos + phase_vel_neg)
-                    )
-
-                    inds = (phase_vel_diff > phase_vel_diff_bounds[0]) & (
-                        phase_vel_diff < phase_vel_diff_bounds[1]
-                    )
-                    np.put(
-                        model_derivatives[param_ind, size_ind, :],
-                        inds,
-                        (
-                            # calculating the centered derivative
-                            (phase_vel_pos - phase_vel_neg)
-                            / (2 * step_sizes[param_ind, size_ind]),
-                        ),
-                    )
-                except (DispersionError, ZeroDivisionError) as e:
-                    pass
-
-                if size_ind == n_sizes - 1:
-                    break
-                # setting step sizes for the next loop
-                step_sizes[:, size_ind + 1] = step_sizes[:, size_ind] / size_scale
+                # calculate centered derivative for values with reasonable differences(?)
+                inds = (phase_vel_diff > phase_vel_diff_bounds[0]) & (
+                    phase_vel_diff < phase_vel_diff_bounds[1]
+                )
+                model_derivatives[:, :, inds] = (phase_vel_pos - phase_vel_neg) / (
+                    2 * step_sizes[param_ind, inds]
+                )
+            except (DispersionError, ZeroDivisionError) as e:
+                pass
 
         return model_derivatives
 
     def get_jacobian(
         self,
-        n_sizes=50,
-        size_scale=1.5,
-        init_step_size_scale=0.1,
-        phase_vel_diff_bounds=[1.0e-7, 5],
     ):
         """
-        finding the step size where the derivative is best (flattest) (??)
+        finding the step size where the derivative is stable (flat)
         """
+
+        n_sizes = 50
+        size_scale = 1.5
+        init_step_size_scale = 0.1
+        phase_vel_diff_bounds = [1.0e-7, 5]
+
         model_derivatives = self.get_derivatives(
             n_sizes, size_scale, init_step_size_scale, phase_vel_diff_bounds
-        )
+        )  # [param, deriv, data]
 
-        # *** also will need to double check this indexing.... ***
         Jac = np.zeros((self.n_data, self.n_params))
-        # can prolly simplify these loops ***
-        for param_ind in range(self.n_params):
-            for data_ind in range(
-                self.n_data
-            ):  # For each datum, choose best derivative estimate
-                best = 1.0e10
-                ibest = 1
 
-                # model_derivatives = np.zeros((self.n_params, n_sizes, self.n_data))
-                for size_ind in range(n_sizes - 2):
-                    # check if the derivative will very very large, and set those to a set max value.
-                    if np.any(
-                        np.abs(
-                            model_derivatives[
-                                param_ind, size_ind : size_ind + 2, data_ind
-                            ]
-                        )
-                        < 1.0e-7
-                    ):
-                        test = 1.0e20
-                    else:
-                        # *** sum of the absolute value of the ......... uhhhh
-                        # *** or is it abs of the sum.. :/
-                        # i don't think this comparaison is right.
-                        test = np.sum(
-                            np.abs(
-                                (
-                                    model_derivatives[
-                                        param_ind, data_ind, size_ind : size_ind + 1
-                                    ]
-                                    / model_derivatives[
-                                        param_ind, data_ind, size_ind + 1 : size_ind + 2
-                                    ]
-                                )
-                                / 2
-                                - 1
-                            )
-                        )
+        # get indices of derivatives that are too small
+        small_indices = []
+        large_indices = []
+        best_indices = []
+        for s in range(n_sizes - 2):
+            small_indices.append(
+                np.any(np.abs(model_derivatives[:, s : s + 2, :]) < 1.0e-7)
+            )
+            large_indices.append(
+                np.any(np.abs(model_derivatives[:, s : s + 2, :]) > 1.0e10)
+            )
+            # want three in a row
+            # smallest difference between them?
+            # absolute value of the sum of the left and right derivatives
 
-                    if (test < best) and (test > 1.0e-7):
-                        best = test
-                        ibest = size_ind + 1
+            flatness = np.sum(model_derivatives[:, s : s + 2, :])
+            best = np.argmin(flatness)
+            best_indices.append(model_derivatives[:, best, :])
 
-                Jac[data_ind, param_ind] = model_derivatives[
-                    param_ind, ibest, data_ind
-                ]  # Best deriv into Jacobian
-                if best > 1.0e10:
-                    Jac[data_ind, param_ind] = 0.0
+        Jac = model_derivatives[:, best_indices, :]
 
         return Jac
 
-    def lin_rot(self, variance):
+    def lin_rot(self, param_bounds):
         """
         making a linear approximation of the rotation matrix and variance for the params.
 
-        :param param_bounds:
-        :param sigma_model: uncertainty in the data
-        :param variance: from trial and error?
+        :param variance: from the uniform distribution/ prior
 
         :return sigma_pcsd:
         """
         Jac = self.get_jacobian()
         # Scale columns of Jacobian for stability
         Jac = Jac * self.param_bounds[:, 2]  # multiplying by parameter range
+
+        variance = param_bounds
 
         # Uniform bounded priors of width Δmi are approximated by taking C_p to be a diagonal matrix with
         # variances equal to those of the uniform distributions, i.e., ( Δmi ) 12.
@@ -587,7 +545,7 @@ class ChainModel(Model):
         rot_mat, s, _ = np.linalg.svd(cov_cur)
         sigma_model = 1 / (2 * np.sqrt(np.abs(s)))  # PC standard deviations
 
-        return sigma_model, rot_mat
+        return rot_mat, sigma_model
 
     def get_likelihood(self, test_params):
         """
@@ -622,11 +580,22 @@ class ChainModel(Model):
             # idx_diff = np.argmin(abs(edge - self.model_params[ind]))
             # self.model_hist[idx_diff, ind] += 1
 
-    def update_covariance_matrix(self, update_rot_mat):
-        """
-        :param update_rot_mat: whether or not to update the rotation matrix. this also updates sigma_model.
-            after the burn-in, we switch to calculating the rotation matrix from the covariance matrix.
-        """
+    def update_rotation_matrix(self):
+        # for burn in period, update rotation matrix by linearization
+        # after burn in, start saving samples in covariance matrix
+        # after burn in (and cov mat stabilizes) start using cov mat to get rotation matrix
+        # update covariance matrix
+
+        if burn_in:
+            # linearize
+            rot_mat, sigma_model = self.lin_rot()
+        else:
+            rot_mat, sigma_model = self.update_covariance_matrix()
+
+        self.rot_mat, self.sigma_model = rot_mat, sigma_model
+
+    def update_covariance_matrix(self):
+        """ """
         # normalizing
         normalized_model = (
             self.model_params - self.param_bounds[:, 0]
@@ -653,9 +622,10 @@ class ChainModel(Model):
                 self.cov_mat[row, col] /= np.sqrt(  # invalid scalar divide
                     self.cov_mat[row, row] * self.cov_mat[col, col]
                 )
-        # after burn in is over, update covariance rot_mat and s from cov_mat
-        if update_rot_mat:
-            self.rot_mat, s, _ = np.linalg.svd(
-                self.cov_mat
-            )  # rotate it to its Singular Value Decomposition
-            self.sigma_model = np.sqrt(s)
+
+        rot_mat, s, _ = np.linalg.svd(
+            self.cov_mat
+        )  # rotate it to its Singular Value Decomposition
+        sigma_model = np.sqrt(s)
+
+        return rot_mat, sigma_model

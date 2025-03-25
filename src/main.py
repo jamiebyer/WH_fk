@@ -1,60 +1,58 @@
 from processing.run_geopsy import *
 from processing.run_obspy import *
-from inversion.forward_model import *
+from inversion.forward_model import SyntheticModel, DataModel
 from plotting.inversion_plotting import *
-
+from inversion.inversion import Inversion
+import asyncio
 import numpy as np
 
 
 def run_inversion(synthetic_data=True):
-    # *** model generation / chain generation
-    model_kwards = {
-        "poisson_ratio": 0.265,
-        "density_params": [540.6, 360.1],  # *** check units ***
-        "n_layers": 10,
-        "n_chains": 2,
-        "beta_spacing_factor": 1.15,
-        "model_variance": 12,
+    inversion_init_kwargs = {
+        "n_bins": 200,
+        "n_burn": 10000,
+        "n_keep": 2000,
+        "n_rot": 40000,
     }
-
-    inversion_init_kwargs = (
-        {
-            "n_bins": 200,
-            "n_burn": 10000,
-            "n_keep": 2000,
-            "n_rot": 40000,
-        },
-    )
-
     inversion_run_kwargs = {
         "max_perturbations": 10,
         "hist_conv": 0.05,
     }
+    model_kwards = {
+        "poisson_ratio": 0.265,
+        "density_params": [540.6, 360.1],
+        "n_layers": 2,
+        "n_chains": 1,
+        "beta_spacing_factor": 1.15,
+    }
 
     if synthetic_data:
-        synthetic_model_kwargs = {
-            "poisson_ratio": 0.265,
-            "density_params": [540.6, 360.1],  # *** check units ***
-            "n_data": 10,
-            "n_layers": 3,
-            "layer_bounds": [5e-3, 15e-3],  # km
-            "vel_s_bounds": [2, 6],  # km/s
-            "sigma_pd_bounds": [0, 1],
-        }
+        model_kwargs = model_kwargs.update(
+            {
+                "n_data": 10,
+                "layer_bounds": [5e-3, 15e-3],  # km
+                "vel_s_bounds": [2, 6],  # km/s
+                "sigma_pd_bounds": [0, 1],
+            }
+        )
 
-        model = SyntheticModel()
+        model = SyntheticModel(model_kwargs)
 
     else:
+        # *** model generation / chain generation
+
         n_data, freqs, data_obs = read_observed_data()
         periods = np.flip(1 / freqs)
         data_obs = np.flip(data_obs)
 
-        model = DataModel()
+        model = DataModel(model_kwards)
+
+    # should be passing param bounds...
+    # unless that's on model...
 
     # run inversionl
     inversion = Inversion(
         model,
-        **data_kwargs,
         **inversion_init_kwargs,
     )
 
@@ -65,5 +63,5 @@ def run_inversion(synthetic_data=True):
 
 
 if __name__ == "__main__":
-    run_inversion()
-    # plot_observed_data()
+    # run_inversion()
+    plot_observed_data()

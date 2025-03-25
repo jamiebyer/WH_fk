@@ -1,6 +1,7 @@
 import numpy as np
 import sys
-from model import ChainModel
+
+# from model import ChainModel
 from dask.distributed import Client
 import os
 import xarray as xr
@@ -55,9 +56,11 @@ class Inversion:
         param_bounds = self.assemble_param_bounds(param_bounds)
 
         # parameters related to number of steps taken in random walk
+        # should work with a burn in of 0
         self.n_burn_in = n_burn_in
-        self.n_keep = n_keep
         self.n_rot = n_rot
+
+        self.n_keep = n_keep
         self.n_mcmc = 100000 * n_keep  # number of steps for the random walk
 
         # initialize chains, generate starting params.
@@ -150,6 +153,7 @@ class Inversion:
 
         # generate the starting models
         betas = self.get_betas(beta_spacing_factor)  # get values of beta
+
         chains = []
         for ind in range(self.n_chains):
             model = ChainModel(
@@ -416,10 +420,7 @@ class Inversion:
         for _ in n_perturbations:
             # evolve model forward by perturbing each parameter and accepting/rejecting new model based on MH criteria
             chain_model.perturb_params(scale_factor)
-
-            # start saving cov_mat after burn-in
-            if update_cov_mat:
-                chain_model.update_covariance_matrix(update_rot_mat)
+            self.update_rotation_matrix()
 
         return chain_model
 

@@ -7,6 +7,8 @@ import re
 import xarray as xr
 from matplotlib.colors import LogNorm
 
+# import statsmodels.api as sm
+
 
 """
 TODO:
@@ -292,6 +294,7 @@ def plot_observed_data():
     plt.subplot(2, 1, 1)
     max_file = "./data/WH01/WH01_fine.max"
     txt_path = "./data/WH01/WH01_curve_fine.txt"
+    txt_path_2 = "./data/WH01/WH01_curve_fine_2.txt"
 
     # Open the file in read mode
     with open(max_file, "r") as file:
@@ -336,15 +339,20 @@ def plot_observed_data():
     plt.grid()
 
     names = ["frequency", "slowness", "error", "n_binned", "valid"]
-    df_txt = pd.read_csv(txt_path, sep="\s+", names=names)
+    df_txt = pd.read_csv(txt_path, skiprows=5, sep="\s+", names=names)
+    df_txt_2 = pd.read_csv(txt_path_2, skiprows=5, sep="\s+", names=names)
 
     # plt.scatter(df_txt["frequency"], 1 / df_txt["slowness"], c="black", s=5)
     plt.errorbar(
         df_txt["frequency"],
         1 / df_txt["slowness"],
-        1 / ((df_txt["error"] / 100) * df_txt["slowness"]),
+        # 1 / (df_txt["error"] * df_txt["slowness"]),
+        1 / df_txt["error"],
         c="black",
     )
+
+    # fit weighted least squares regression model
+    # fit_wls = sm.WLS(y, X, weights=wt).fit()
 
     plt.subplot(2, 1, 2)
     max_file = "./data/WH02/WH02_fine.max"
@@ -399,7 +407,8 @@ def plot_observed_data():
     plt.errorbar(
         df_txt["frequency"],
         1 / df_txt["slowness"],
-        1 / ((df_txt["error"] / 100) * df_txt["slowness"]),
+        # 1 / (df_txt["error"] * df_txt["slowness"]),
+        1 / df_txt["error"],
         c="black",
     )
 
