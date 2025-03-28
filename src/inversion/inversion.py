@@ -1,7 +1,7 @@
 import numpy as np
 import sys
 
-# from model import ChainModel
+from inversion.forward_model import ChainModel, Model
 from dask.distributed import Client
 import os
 import xarray as xr
@@ -11,18 +11,11 @@ class Inversion:
     def __init__(
         self,
         model,
-        # n_data,
-        # periods,
-        # data_obs,
         param_bounds,
-        # n_layers,
-        # poisson_ratio,
-        # density_params,
         n_chains,
         beta_spacing_factor,
-        model_variance,
         n_bins,
-        n_burn_in,
+        n_burn,
         n_keep,
         n_rot,
     ):
@@ -36,7 +29,6 @@ class Inversion:
         :param n_layers: number of layers in model.
         :param n_chains: number of chains
         :param beta_spacing_factor:
-        :param model_variance:
         :param n_bins: number of bins for the model histograms
         :param n_burn_in: number of steps to discard from the start of the run (to avoid bias towards the starting model)
         :param n_keep: number of steps/iterations to save to file at a time. determines total number of steps.
@@ -50,14 +42,15 @@ class Inversion:
         - run with linearlization
         - run with parallel tempering/ chains
         """
+        # *** weird using the model properties here. distinguish better
 
         # setting up model
         self.model = model
-        param_bounds = self.assemble_param_bounds(param_bounds)
+        param_bounds = Model.assemble_param_bounds(param_bounds, model.n_layers)
 
         # parameters related to number of steps taken in random walk
         # should work with a burn in of 0
-        self.n_burn_in = n_burn_in
+        self.n_burn = n_burn
         self.n_rot = n_rot
 
         self.n_keep = n_keep
@@ -66,13 +59,16 @@ class Inversion:
         # initialize chains, generate starting params.
         self.n_chains = n_chains
         self.initialize_chains(
+            model,
             n_bins,
             param_bounds,
-            poisson_ratio,
-            density_params,
-            model_variance,
+            model.n_layers,
+            model.poisson_ratio,
+            model.density_params,
             beta_spacing_factor,
         )
+
+        # set initial likelihood ***
 
         # parameters for saving data
         self.n_bins = n_bins
@@ -86,26 +82,6 @@ class Inversion:
             "swap_prop": [],
             "acc_rate": [],
         }
-
-    def assemble_param_bounds(self, bounds):
-        # * this could be in a setter ****
-        # reshape bounds to be the same shape as params
-        param_bounds = np.concatenate(
-            (
-                [bounds["layer"]] * self.n_layers,
-                [bounds["vel_s"]] * self.n_layers,
-                [bounds["vel_p"]] * self.n_layers,
-                [bounds["density"]] * self.n_layers,
-                [bounds["sigma_data_obs"]],
-            ),
-            axis=0,
-        )
-
-        # add the range of the bounds to param_bounds as a third column (min, max, range)
-        range = param_bounds[:, 1] - param_bounds[:, 0]
-        param_bounds = np.column_stack((param_bounds, range))
-
-        return param_bounds
 
     def get_betas(self, beta_spacing_factor):
         """
@@ -133,11 +109,12 @@ class Inversion:
 
     def initialize_chains(
         self,
+        input_model,
         n_bins,
         param_bounds,
+        n_layers,
         poisson_ratio,
-        density_params,
-        model_variance,
+        birch_params,
         beta_spacing_factor,
     ):
         """
@@ -147,7 +124,6 @@ class Inversion:
         :param param_bounds: bounds for the model params (min, max, range)
         :param poisson_ratio: value for poisson's ratio to pass to the chain model
         :param density_params: birch's parameters to pass to the chain model
-        :param model_variance:
         :param beta_spacing_factor
         """
 
@@ -158,188 +134,26 @@ class Inversion:
         for ind in range(self.n_chains):
             model = ChainModel(
                 betas[ind],
-                self.data_obs,
                 n_bins,
-                self.n_layers,
-                self.n_data,
-                self.periods,
+                # input_model.data_obs,
                 param_bounds,
+                n_layers,
+                input_model.n_data,
+                input_model.periods,
                 poisson_ratio,
-                density_params,
+                birch_params,
             )
-            # get rot_mat and sigma_model for the starting model
-            model.sigma_model, model.rot_mat = model.lin_rot(model_variance)
+            # set initial likelihood
+            model.get_likelihood(input_model.data_obs)
+            # get initial model
+            model.get_optimization_model(param_bounds)
 
             chains.append(model)
 
         self.chains = chains
 
-    def calc_E(self, m, d_obs, theta, sigma):
-        d_new = ref_coeff(m, theta)
-        E = np.sum((d_obs - d_new) ** 2) / (2 * sigma**2)
-        return E, d_new
-
-    def get_optimization_model(self):
-        # annealing schedule
-        # starting temperature
-        # >80-90% accepted initially
-
-        results = {
-            "temperature": [],
-            "acc_rate": [],
-            "misfit": [],
-            "model": [
-                [],
-                [],
-                [],
-                [],
-                [],
-            ],
-            "d_pred": [],
-        }
-
-        # random starting model
-        m = np.random.uniform(param_bounds[:, 0], param_bounds[:, 1])
-        E, _ = self.calc_E(m, d_obs, theta, sigma)
-
-        """
-        # temperature reduction factor
-        T_0 = 1e2
-        n_steps = 50
-        temps = np.logspace(2, 0, 500)
-        """
-
-        T_0 = 100  # Initial Temp
-        epsilon = 0.95  # Decayfactor of temperature
-        ts = 300  # Number of temperature steps
-        n_steps = 200  # Number of balancing steps at each temp
-
-        temps = np.zeros(ts)
-        temps[0] = T_0
-
-        for k in range(1, ts):
-            temps[k] = temps[k - 1] * epsilon
-
-        results["acc_rate"] = []
-        # reduce logarithmically
-        for T in temps:
-            results["acc_rate"].append([])
-            # number of steps at this temperature
-            for _ in range(n_steps):
-                # perturb each parameter
-                for param_ind in range(len(m)):
-                    # cauchy distribution
-                    eta = np.random.uniform(0, 1)
-
-                    gamma = (T / T_0) * np.tan(np.pi * (eta - 0.5))
-                    # m_new = m_try
-                    m_new = m.copy()
-
-                    perturb = gamma * scale_factor[param_ind]
-                    m_new[param_ind] = m_new[param_ind] + perturb
-
-                    E_new, d_new = calc_E(m_new, d_obs, theta, sigma)
-
-                    delta_E = E_new - E
-                    acc = False
-                    if (m_new[param_ind] >= param_bounds[param_ind][0]) and (
-                        m_new[param_ind] <= param_bounds[param_ind][1]
-                    ):
-                        if delta_E <= 0:
-                            m = m_new.copy()
-                            E = E_new
-                            acc = True
-                        else:
-                            xi = np.random.uniform(0, 1)
-                            if xi <= np.exp(-delta_E / T):
-                                m = m_new.copy()
-                                E = E_new
-                                acc = True
-
-                    results["acc_rate"][-1].append(acc)
-
-            results["temperature"].append(T)
-
-            results["model"][0].append(m[0])
-            results["model"][1].append(m[1])
-            results["model"][2].append(m[2])
-            results["model"][3].append(m[3])
-            results["model"][4].append(m[4])
-
-            results["misfit"].append(delta_E)
-            results["d_pred"].append(d_new)
-            results["acc_rate"][-1] = np.sum(results["acc_rate"][-1]) / len(
-                results["acc_rate"][-1]
-            )
-
-        return results, d_new, epsilon, n_steps
-
-    def get_mcmc_model(self, m_init, n_samples, scale_factor, theta, sigma):
-        results = {
-            "model": [
-                [],
-                [],
-                [],
-                [],
-                [],
-            ],
-            "misfit": [],
-            "acc": [],
-            "d_pred": [],
-        }
-
-        # uniform prior and
-        # symmetric proposal distribution
-
-        # acceptance is min{1, L(m')/L(m)}
-
-        m = m_init
-        E, _ = self.calc_E(m, d_obs, theta, sigma)
-        for _ in range(n_samples):
-            # perturb each parameter
-            m_try = m
-            for param_ind in range(len(m)):
-                # cauchy distribution
-                eta = np.random.uniform(0, 1)
-
-                gamma = np.tan(np.pi * (eta - 0.5))
-                m_new = m_try.copy()
-
-                m_new[param_ind] = m_try[param_ind] + gamma * scale_factor[param_ind]
-
-                E_new, d_new = self.calc_E(m_new, d_obs, theta, sigma)
-
-                delta_E = E_new - E
-                acc = False
-                if (
-                    m_new[param_ind] >= param_bounds[param_ind][0]
-                    and m_new[param_ind] <= param_bounds[param_ind][1]
-                ):
-                    if delta_E <= 0:
-                        m = m_new.copy()
-                        E = E_new
-                        acc = True
-                    else:
-                        xi = np.random.uniform(0, 1)
-                        if xi <= np.exp(-delta_E):
-                            m = m_new.copy()
-                            E = E_new
-                            acc = True
-
-                results["model"][0].append(m[0])
-                results["model"][1].append(m[1])
-                results["model"][2].append(m[2])
-                results["model"][3].append(m[3])
-                results["model"][4].append(m[4])
-
-                results["misfit"].append(delta_E)
-                results["acc"].append(acc)
-                results["d_pred"].append(d_new)
-
-        return results
-
     async def random_walk(
-        self, max_perturbations, hist_conv, out_dir, scale_factor=1.3, save_burn_in=True
+        self, max_perturbations, hist_conv, out_dir, save_burn_in=True
     ):
         """
         perform the main loop, for n_mcmc iterations.
@@ -349,82 +163,78 @@ class Inversion:
         :param out_dir: directory where to save results.
         :param save_burn_in:
         """
+        # all chains need to be on the same step number to compare
         async with Client(asynchronous=True) as client:
             for n_steps in range(self.n_mcmc):
                 print("\n", n_steps)
 
-                update_cov_mat = n_steps >= self.n_burn_in
+                burn_in = n_steps < self.n_burn
+                # save burn in: whether or not to save samples from burn in stage
+                # (diff file?, labeled?)
+                # how often is the rotation matrix updated? n_rot?
+
+                # checking whether to write samples
+                # check if saving burn in, check if there is a chunk of n_keep samples to
                 if save_burn_in:
                     write_samples = (n_steps >= self.n_keep - 1) and (
                         (np.mod(n_steps + 1, self.n_keep)) == 0
                     )
-                    update_rot_mat = (
-                        write_samples
-                        and (n_steps > self.n_burn_in)
-                        and n_steps != self.n_keep
-                    )
-                    end_burn_in = n_steps == self.n_keep - 1
                 else:
-                    # n_keep doesn't need to be same freq as updating rot_mat
-                    write_samples = (n_steps >= self.n_burn_in - 1) and (
+                    write_samples = (n_steps >= self.n_burn - 1) and (
                         np.mod(n_steps + 1, self.n_keep)
                     ) == 0
-                    update_rot_mat = write_samples and n_steps != self.n_keep
-                    end_burn_in = n_steps == self.n_burn_in - 1
 
                 # parallel computing
                 delayed_results = []
                 for ind in range(self.n_chains):
                     chain_model = self.chains[ind]
 
+                    # rotation matrix step needs to be before step
+                    chain_model.update_rotation_matrix(burn_in)
                     updated_model = client.submit(
                         self.perform_step,
                         chain_model,
-                        update_cov_mat,
-                        update_rot_mat,
                         max_perturbations,
-                        scale_factor,
                     )
+                    # update model param hist
+                    chain_model.update_model_hist()
                     delayed_results.append(updated_model)
 
                 # synchronizing the separate chains
                 self.chains = await client.gather(delayed_results)
 
-                # tempering exchange move
-                self.perform_tempering_swap()
+                if self.n_chains > 1:
+                    # tempering exchange move
+                    self.perform_tempering_swap()
 
+                # if it converges, need to save final samples
+
+                # check convergence using model param hist
+                hist_diff = self.check_convergence(n_steps, hist_conv)
                 # saving sample and write to file
-                hist_diff = self.check_convergence(n_steps, hist_conv, out_dir)
-                self.store_samples(
-                    hist_diff, n_steps, self.n_keep, out_dir, write_samples, end_burn_in
-                )
+                self.store_samples(write_samples, hist_diff, n_steps, out_dir)
 
     async def perform_step(
         self,
         chain_model,
-        update_cov_mat,
-        update_rot_mat,
         max_perturbations,
-        scale_factor,
     ):
         """
         update one chain model.
         perturb each param on the chain model and accept each new model with a likelihood.
-
-        :param chain_model:
-        :param update_cov_mat:
-        :param update_rot_mat:
         """
         # *** what kind of random distribution should this be, and should there be a lower bound...? ***
         n_perturbations = np.random.uniform(max_perturbations)
         for _ in n_perturbations:
             # evolve model forward by perturbing each parameter and accepting/rejecting new model based on MH criteria
-            chain_model.perturb_params(scale_factor)
-            self.update_rotation_matrix()
+            chain_model.perturb_params()
 
         return chain_model
 
     def perform_tempering_swap(self):
+        """
+        *** fix up later ***
+        """
         # tempering exchange move
         # following: https://www.cs.ubc.ca/~nando/540b-2011/projects/8.pdf
 
@@ -468,7 +278,11 @@ class Inversion:
         :out_dir: path for where to save results.
         """
         # do at least n_rot steps after starting rotation before model can converge
-        enough_rotations = n_step > (self.n_burn_in + self.n_rot)
+        enough_rotations = n_step > (self.n_burn + self.n_rot)
+
+        """
+        Check convergence for one chain, and for any number.
+        """
 
         # *** validate. i think this is finding convergence for 2 chains. i want to generalize this. ***
         # find the max of abs of the difference between 2 models, right now hard-coded for 2 chains
@@ -481,14 +295,13 @@ class Inversion:
 
         if (hist_diff < hist_conv) & enough_rotations:
             # store the samples up to the convergence.
-            n_samples = (n_step - self.n_burn_in) % self.n_keep
+            n_samples = (n_step - self.n_burn) % self.n_keep
             self.store_samples(
                 hist_diff,
                 n_step,
                 n_samples,
                 out_dir,
                 write_samples=True,
-                create_file=False,
             )
 
             # model has converged.
@@ -506,7 +319,6 @@ class Inversion:
         :param n_step: current step number in the random walk.
         :param n_samples: number of samples being saved.
         :param write_samples: whether or not to write samples to file. (write every n_keep steps)
-        :param create_file: whether or not this is the first save to file, and if the file needs to be created.
         :param out_dir: the output directory where to save results.
         """
         for chain in self.chains:

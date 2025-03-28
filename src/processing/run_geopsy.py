@@ -64,53 +64,16 @@ def plot_max_file(max_file):
         "valid",
     ]
 
-    data_types = {
-        "abs_time": float,
-        "frequency": float,
-        "polarization": str,
-        "slowness": float,
-        "azimuth": float,
-        "ellipticity": float,
-        "noise": float,
-        "power": float,
-        "valid": int,
-    }
-
     # df = pd.read_csv(max_file, header=ind, sep=" ")
     df = pd.read_csv(max_file, skiprows=ind, sep="\s+", names=names)
-
-    """
-    freqs_array = np.linspace(np.min(freqs), np.max(freqs), 1000)
-    vels_array = np.linspace(np.min(vels), np.max(vels), 1000)
-
-    # Initialize the scaler
-    scaler = MinMaxScaler(feature_range=(0, 1000))
-
-    # Fit and transform the data
-    freqs = scaler.fit_transform(freqs.values.reshape(-1, 1))
-    vels = scaler.fit_transform(vels.values.reshape(-1, 1))
-
-    # grid_x, grid_y = np.mgrid[freqs_array, vels_array]
-    grid_x, grid_y = np.mgrid[0:1:1000, 0:1:1000]
-    points = np.array([freqs.squeeze(), vels.squeeze()])
-    # values = np.ones(len(freqs))
-    values = df["power"]
-
-    grid_z0 = griddata(points.T, values, (grid_x, grid_y), method="nearest")
-    # grid_z1 = griddata(points, values, (grid_x, grid_y), method="linear")
-    # grid_z2 = griddata(points, values, (grid_x, grid_y), method='cubic')
-
-    plt.imshow(grid_z0.T, origin="lower")
-
-
-    """
+    print(df)
 
     freqs = df["frequency"]
     vels = 1 / df["slowness"]
     az = df["azimuth"]
     power = df["power"]
 
-    # """
+    """
     k_min, k_max = 0.087597, 0.0897466  # rad/m
     vel_min = k_min / (2 * np.pi * freqs)
     vel_max = k_max / (2 * np.pi * freqs)
@@ -118,7 +81,7 @@ def plot_max_file(max_file):
     plt.plot(freqs, 1 / vel_max)
     plt.xscale("log")
     plt.show()
-    # """
+    """
 
     # print(np.min(vels), np.max(vels))
     plt.subplot(3, 1, 1)
@@ -189,6 +152,68 @@ def plot_dispersion_curve():
     plt.show()
 
 
+def plot_max_file_curve(max_file):
+    # Open the file in read mode
+    with open(max_file, "r") as file:
+        # Read the first line
+        line = file.readline()
+        ind = 0
+        while line:
+            if "# BEGIN DATA" in line:
+                ind += 3
+                break
+            line = file.readline()  # Read the next line
+            ind += 1
+
+    names = [
+        "abs_time",
+        "frequency",
+        # "polarization",
+        "slowness",
+        "azimuth",
+        "",
+        "ellipticity",
+        "noise",
+        "power",
+        "valid",
+    ]
+
+    # df = pd.read_csv(max_file, header=ind, sep=" ")
+    df = pd.read_csv(max_file, skiprows=ind, sep="\s+", names=names)
+
+    freqs_grid = df["frequency"]
+    vels_grid = 1 / df["slowness"]
+    # az = df["azimuth"]
+    # power = df["power"]
+
+    plt.hist2d(freqs_grid, vels_grid, bins=200, cmap="coolwarm", norm=LogNorm())
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.xlabel("freqs")
+    plt.ylabel("velocity")
+
+    plt.colorbar()
+
+    # compute dispersion curve
+    freqs_curve = np.unique(freqs_grid)
+    vels_curve = []
+    stds_curve = []
+    for f in freqs_curve:
+        vel = np.median(vels_grid[freqs_grid == f])
+        std = np.std(vels_grid[freqs_grid == f])
+        vels_curve.append(vel)
+        stds_curve.append(std)
+
+    # plot dispersion curve
+    # plt.plot(freqs_curve, vels_curve)
+    plt.errorbar(freqs_curve, vels_curve, stds_curve)
+
+    plt.grid()
+
+    plt.tight_layout()
+    plt.show()
+
+
 def run_geopsy():
     geopsy_fk_path = "./geopsypack-src-3.5.2/bin/geopsy-fk"
     gpviewmax_path = "./geopsypack-src-3.5.2/bin/max2curve"
@@ -241,6 +266,7 @@ def run_geopsy():
     """
 
     # max_file = "./data/WH02/WH02_fine.max"
+    # max_file = "./data/WH01/WH01_fine_test.max"
     max_file = "./results/capon-importedsignals.max"
     plot_max_file(max_file)
 

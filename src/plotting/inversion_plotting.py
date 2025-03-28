@@ -10,13 +10,6 @@ from matplotlib.colors import LogNorm
 # import statsmodels.api as sm
 
 
-"""
-TODO:
-- will saving the output as a dask array keep the formatting of the arrays?
-    right now the reading in takes extra steps to reformat...
-"""
-
-
 def plot_results(true_model):
     # plot true s and p velocities, plot observed phase velocity, plot density profile.
     plot_scene(true_model)
