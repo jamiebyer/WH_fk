@@ -6,6 +6,8 @@ import ast
 import re
 import xarray as xr
 from matplotlib.colors import LogNorm
+from disba import PhaseDispersion
+from inversion.forward_model import Model
 
 # import statsmodels.api as sm
 
@@ -405,4 +407,313 @@ def plot_observed_data():
         c="black",
     )
 
+    plt.show()
+
+
+def plot_optimized_model():
+    df = pd.read_csv("./results/inversion/optimize_model.csv", index_col=0)
+
+    plt.plot(df["logL"])
+    plt.ylabel("logL")
+    plt.title("optimize model")
+    plt.show()
+
+    thickness = []
+    for p in df["thickness"]:
+        par = p.removeprefix("[").removesuffix("]")
+        par = par.replace("'", "").replace("  ", " ")
+        # par = par.split(" ")
+        par = par.split(" ")
+        par = [i for i in par if i]
+
+        thickness.append(np.array(par, dtype=float))
+
+    vel_s = []
+    for p in df["vel_s"]:
+        par = p.removeprefix("[").removesuffix("]")
+        par = par.replace("'", "").replace("  ", " ")
+        # par = par.split(" ")
+        par = par.split(" ")
+        par = [i for i in par if i]
+
+        vel_s.append(np.array(par, dtype=float))
+
+    plt.subplot(3, 1, 1)
+    plt.plot(np.array(thickness)[:, 0])
+    plt.ylabel("thickness 1")
+
+    plt.subplot(3, 1, 2)
+    plt.plot(np.array(vel_s)[:, 0])
+    plt.ylabel("vel s 2")
+
+    plt.subplot(3, 1, 3)
+    plt.plot(np.array(vel_s)[:, 1])
+    plt.ylabel("vel s 1")
+
+    plt.suptitle("optimize model")
+    plt.show()
+
+
+def plot_starting_model():
+    df = pd.read_csv("./results/inversion/optimize_model.csv", index_col=0)
+
+    plt.plot(df["logL"])
+    plt.ylabel("logL")
+    plt.title("optimize model")
+    plt.show()
+
+    params = []
+    for p in df["params"]:
+        par = p.removeprefix("[").removesuffix("]")
+        par = par.replace("'", "").replace("  ", " ")
+        # par = par.split(" ")
+        par = par.split(" ")
+        par = [i for i in par if i]
+
+        params.append(np.array(par, dtype=float))
+
+    plt.subplot(3, 3, 1)
+    plt.plot(np.array(params)[:, 0])
+    plt.ylabel("thickness 1")
+
+    plt.subplot(3, 3, 2)
+    plt.plot(np.array(params)[:, 1])
+    plt.ylabel("vel s 1")
+
+    plt.subplot(3, 3, 3)
+    plt.plot(np.array(params)[:, 2])
+    plt.ylabel("vel s 2")
+
+    plt.subplot(3, 3, 4)
+    plt.plot(np.array(params)[:, 3])
+    plt.ylabel("vel p 1")
+
+    plt.subplot(3, 3, 5)
+    plt.plot(np.array(params)[:, 4])
+    plt.ylabel("vel p 2")
+
+    plt.subplot(3, 3, 6)
+    plt.plot(np.array(params)[:, 5])
+    plt.ylabel("density 1")
+
+    plt.subplot(3, 3, 7)
+    plt.plot(np.array(params)[:, 6])
+    plt.ylabel("density 2")
+
+    plt.suptitle("optimize model")
+    plt.show()
+
+
+def plot_inversion_results_logL(in_path):
+    ds = xr.open_dataset(in_path)
+
+    plt.plot(ds["logL"][5:])
+    plt.xlabel("step")
+    plt.ylabel("logL")
+    plt.title("MCMC model")
+    plt.show()
+
+
+def plot_inversion_results_param_time(in_path):
+    ds = xr.open_dataset(in_path)
+
+    bounds = {
+        "thickness": [0.01, 1],  # km
+        "vel_p": [0.1, 6],  # km/s
+        "vel_s": [0.1, 5],  # km/s
+        "density": [0.5, 5],  # g/cm^3
+        # "sigma_model": [0.01, 0.3],
+    }
+
+    plt.subplot(3, 1, 1)
+    plt.plot(ds["thickness"][:, 0])
+    plt.axhline(bounds["thickness"][0], c="black")
+    plt.axhline(bounds["thickness"][1], c="black")
+    plt.ylabel("thickness 1")
+
+    plt.subplot(3, 1, 2)
+    plt.plot(ds["vel_s"][:, 0])
+    plt.axhline(bounds["vel_s"][0], c="black")
+    plt.axhline(bounds["vel_s"][1], c="black")
+    plt.ylabel("vel_s 1")
+    plt.subplot(3, 1, 3)
+    plt.plot(ds["vel_s"][:, 1])
+    plt.axhline(bounds["vel_s"][0], c="black")
+    plt.axhline(bounds["vel_s"][1], c="black")
+    plt.ylabel("vel_s 2")
+
+    """
+    plt.subplot(3, 3, 4)
+    plt.axhline(bounds["vel_p"][0], c="black")
+    plt.axhline(bounds["vel_p"][1], c="black")
+    plt.ylabel("vel_p 1")
+    plt.subplot(3, 3, 5)
+    plt.axhline(bounds["vel_p"][0], c="black")
+    plt.axhline(bounds["vel_p"][1], c="black")
+    plt.ylabel("vel_p 2")
+
+    plt.subplot(3, 3, 6)
+    plt.axhline(bounds["density"][0], c="black")
+    plt.axhline(bounds["density"][1], c="black")
+    plt.ylabel("density 1")
+    plt.subplot(3, 3, 7)
+    plt.axhline(bounds["density"][0], c="black")
+    plt.axhline(bounds["density"][1], c="black")
+    plt.ylabel("density 2")
+    """
+    # plt.subplot(3, 3, 9)
+    # plt.axhline(bounds["sigma_model"][0], c="black")
+    # plt.axhline(bounds["sigma_model"][1], c="black")
+    # plt.title("sigma model")
+
+    plt.tight_layout()
+    plt.suptitle("MCMC model params")
+
+    plt.show()
+
+
+def plot_inversion_results_param_prob(in_path):
+    ds = xr.open_dataset(in_path)
+
+    m = [0.03] + [0.4, 1.5] + [1.6, 2.5] + [2.0, 2.5]
+    # m = [0.5, 10.0, 7.00, 9.50, 3.50, 4.75, 2.00, 2.00]
+
+    bounds = {
+        "thickness": [0.01, 1],  # km
+        "vel_p": [0.1, 6],  # km/s
+        "vel_s": [0.1, 5],  # km/s
+        "density": [0.5, 5],  # g/cm^3
+        # "sigma_model": [0.01, 0.3],
+    }
+
+    # plt.plot(ds["logL"][5:])
+    # plt.show()
+
+    plt.subplot(3, 1, 1)
+    plt.hist(ds["thickness"][:, 0], bins=40)
+    plt.axvline(bounds["thickness"][0], c="black")
+    plt.axvline(bounds["thickness"][1], c="black")
+    plt.axvline(m[0], c="red")
+    plt.ylabel("thickness 1")
+
+    plt.subplot(3, 1, 2)
+    plt.hist(ds["vel_s"][:, 0], bins=40)
+    plt.axvline(bounds["vel_s"][0], c="black")
+    plt.axvline(bounds["vel_s"][1], c="black")
+    plt.axvline(m[1], c="red")
+    plt.ylabel("vel_s 1")
+    plt.subplot(3, 1, 3)
+    plt.hist(ds["vel_s"][:, 1], bins=40)
+    plt.axvline(bounds["vel_s"][0], c="black")
+    plt.axvline(bounds["vel_s"][1], c="black")
+    plt.axvline(m[2], c="red")
+    plt.ylabel("vel_s 2")
+
+    """
+    plt.subplot(3, 3, 4)
+    plt.axvline(bounds["vel_p"][0], c="black")
+    plt.axvline(bounds["vel_p"][1], c="black")
+    plt.axvline(m[3], c="red")
+    plt.ylabel("vel_p 1")
+    plt.subplot(3, 3, 5)
+    plt.axvline(bounds["vel_p"][0], c="black")
+    plt.axvline(bounds["vel_p"][1], c="black")
+    plt.axvline(m[4], c="red")
+    plt.ylabel("vel_p 2")
+
+    plt.subplot(3, 3, 6)
+    plt.axvline(bounds["density"][0], c="black")
+    plt.axvline(bounds["density"][1], c="black")
+    plt.axvline(m[5], c="red")
+    plt.ylabel("density 1")
+    plt.subplot(3, 3, 7)
+    plt.axvline(bounds["density"][0], c="black")
+    plt.axvline(bounds["density"][1], c="black")
+    plt.axvline(m[6], c="red")
+    plt.ylabel("density 2")
+    """
+    plt.tight_layout()
+    plt.suptitle("MCMC model params")
+
+    plt.show()
+
+
+def plot_pred_vs_obs(in_path):
+    ds = xr.open_dataset(in_path)
+
+    plt.plot(ds["data_obs"])
+    plt.plot(ds.isel(step=slice(-20, -1))["data_pred"].T)
+    # plt.plot(ds["data_pred"].T)
+    plt.legend(["data_obs", "data_pred"])
+    plt.show()
+
+
+def plot_forward_model():
+    n_data = 50
+    sigma_data = 0.2
+    periods = np.flip(1 / np.logspace(-2, 2, n_data))
+
+    # km, km/s, km/s, g/cm3
+    velocity_model = np.array(
+        [
+            # [0.5, 7.00, 3.50, 2.00],
+            # [10.0, 9.50, 4.75, 2.00],
+            # [0.03, 0.8, 0.4, 2.0],
+            # [0.0, 3.0, 1.5, 2.5],
+            [0.03, 1.6, 0.4, 2.0],
+            [0.0, 2.5, 1.5, 2.5],
+        ]
+    ).T
+
+    pd = PhaseDispersion(*velocity_model)
+    pd_rayleigh = pd(periods, mode=0, wave="rayleigh")
+
+    data_true = pd_rayleigh.velocity
+    data_obs = data_true + sigma_data * np.random.randn(len(periods))
+
+    plt.plot(data_true)
+    plt.plot(data_obs)
+
+    plt.show()
+
+
+def plot_station_positions():
+    pass
+
+
+def plot_generated_params():
+    bounds = {
+        "thickness": [0.01, 1],  # km
+        "vel_p": [0.1, 6],  # km/s
+        "vel_s": [0.1, 5],  # km/s
+        "density": [0.5, 5],  # g/cm^3
+        # "sigma_model": [0.01, 0.3],
+    }
+
+    periods = np.flip(1 / np.logspace(-2, 2, 50))
+    # velocity_model = np.array(
+    #    [
+    #        [0.03, 0.8, 0.4, 2.0],
+    #        [0.0, 3.0, 1.5, 2.5],
+    #    ]
+    # ).T
+
+    param_bounds = Model.assemble_param_bounds(bounds, n_layers=2)
+
+    params = np.random.uniform(
+        param_bounds[:, 0], param_bounds[:, 1], len(param_bounds)
+    )
+
+    velocity_model = np.array(
+        [
+            [params[0], params[3], params[1], params[5]],
+            [0.0, params[4], params[2], params[6]],
+        ]
+    ).T
+
+    pd = PhaseDispersion(*velocity_model)
+    pd_rayleigh = pd(periods, mode=0, wave="rayleigh")
+    dispersion_curve = pd_rayleigh.velocity
+
+    plt.plot(dispersion_curve)
     plt.show()

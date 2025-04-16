@@ -1,16 +1,20 @@
 import numpy as np
 import sys
 
-from inversion.forward_model import ChainModel, Model
+from inversion.forward_model import Model
 from dask.distributed import Client
 import os
 import xarray as xr
+import time
 
 
 class Inversion:
     def __init__(
         self,
-        model,
+        data,
+        n_layers,
+        sigma_model,
+        poisson_ratio,
         param_bounds,
         n_chains,
         beta_spacing_factor,
@@ -42,29 +46,29 @@ class Inversion:
         - run with linearlization
         - run with parallel tempering/ chains
         """
-        # *** weird using the model properties here. distinguish better
 
         # setting up model
-        self.model = model
-        param_bounds = Model.assemble_param_bounds(param_bounds, model.n_layers)
+        self.data = data
+        # self.param_bounds = Model.assemble_param_bounds(param_bounds, n_layers)
+        self.param_bounds = param_bounds
 
         # parameters related to number of steps taken in random walk
-        # should work with a burn in of 0
+        # should function with a burn in of 0
         self.n_burn = n_burn
         self.n_rot = n_rot
 
         self.n_keep = n_keep
-        self.n_mcmc = 100000 * n_keep  # number of steps for the random walk
+        # self.n_mcmc = 100000 * n_keep  # number of steps for the random walk
+        self.n_mcmc = 100 * n_keep  # number of steps for the random walk
 
         # initialize chains, generate starting params.
         self.n_chains = n_chains
         self.initialize_chains(
-            model,
             n_bins,
-            param_bounds,
-            model.n_layers,
-            model.poisson_ratio,
-            model.density_params,
+            self.param_bounds,
+            n_layers,
+            sigma_model,
+            poisson_ratio,
             beta_spacing_factor,
         )
 
@@ -73,14 +77,18 @@ class Inversion:
         # parameters for saving data
         self.n_bins = n_bins
         self.stored_results = {
-            "params": [],
+            # "params": [],
+            "thickness": [],
+            "vel_s": [],
+            "data_pred": [],
             "logL": [],
             "beta": [],
-            "rot_mat": [],
-            "sigma_model": [],
+            # "rot_mat": [],
+            # "sigma_model": [],
+            # "hist_diff": [],
             "swap_acc": [],
             "swap_prop": [],
-            "acc_rate": [],
+            # "acc_rate": [],
         }
 
     def get_betas(self, beta_spacing_factor):
@@ -109,13 +117,13 @@ class Inversion:
 
     def initialize_chains(
         self,
-        input_model,
         n_bins,
         param_bounds,
         n_layers,
+        sigma_model,
         poisson_ratio,
-        birch_params,
         beta_spacing_factor,
+        optimize_starting_model=False,
     ):
         """
         initialize each of the chains, setting starting parameters, beta values, initial rotation params
@@ -129,31 +137,48 @@ class Inversion:
 
         # generate the starting models
         betas = self.get_betas(beta_spacing_factor)  # get values of beta
-
         chains = []
         for ind in range(self.n_chains):
-            model = ChainModel(
+            model = Model(
+                n_layers,
+                poisson_ratio,
+                sigma_model,
                 betas[ind],
                 n_bins,
-                # input_model.data_obs,
-                param_bounds,
-                n_layers,
-                input_model.n_data,
-                input_model.periods,
-                poisson_ratio,
-                birch_params,
             )
+            # model.model_params = model.generate_model_params(param_bounds)
+            # velocity_model = np.array([[0.03, 0], [1.6, 2.5], [0.4, 1.5], [2.0, 2.5]])
+
+            model.thickness = np.array([0.03])
+            model.vel_s = np.array([0.4, 1.5])
+            model.vel_p = np.array([1.6, 2.5])
+            model.density = np.array([2.0, 2.5])
+
+            # velocity_model, valid_params = model.get_velocity_model()
+            velocity_model = np.array([[0.03, 0], [1.6, 2.5], [0.4, 1.5], [2.0, 2.5]])
+
             # set initial likelihood
-            model.get_likelihood(input_model.data_obs)
+            model.logL, model.data_pred = model.get_likelihood(
+                self.data.periods, velocity_model, self.data.data_obs
+            )
             # get initial model
-            model.get_optimization_model(param_bounds)
+            if optimize_starting_model:
+                model_params = model.get_optimization_model(
+                    param_bounds, self.data.periods, self.data.data_obs
+                )
+                model.model_params = model_params
 
             chains.append(model)
 
         self.chains = chains
 
-    async def random_walk(
-        self, max_perturbations, hist_conv, out_dir, save_burn_in=True
+    # async def random_walk(
+    def random_walk(
+        self,
+        max_perturbations,
+        hist_conv,
+        save_burn_in=True,
+        rotation=False,
     ):
         """
         perform the main loop, for n_mcmc iterations.
@@ -163,58 +188,74 @@ class Inversion:
         :param out_dir: directory where to save results.
         :param save_burn_in:
         """
+        out_dir = "./results/inversion/results" + str(int(time.time())) + ".nc"
         # all chains need to be on the same step number to compare
-        async with Client(asynchronous=True) as client:
-            for n_steps in range(self.n_mcmc):
-                print("\n", n_steps)
+        # async with Client(asynchronous=True) as client:
+        for n_steps in range(self.n_mcmc):
+            print("\n", n_steps)
+            burn_in = n_steps < self.n_burn
+            # save burn in: whether or not to save samples from burn in stage
+            # (diff file?, labeled?)
+            # how often is the rotation matrix updated? n_rot?
 
-                burn_in = n_steps < self.n_burn
-                # save burn in: whether or not to save samples from burn in stage
-                # (diff file?, labeled?)
-                # how often is the rotation matrix updated? n_rot?
+            # checking whether to write samples
+            # check if saving burn in, check if there is a chunk of n_keep samples to
+            if save_burn_in:
+                write_samples = (n_steps >= self.n_keep - 1) and (
+                    (np.mod(n_steps + 1, self.n_keep)) == 0
+                )
+            else:
+                write_samples = (n_steps >= self.n_burn - 1) and (
+                    np.mod(n_steps + 1, self.n_keep)
+                ) == 0
 
-                # checking whether to write samples
-                # check if saving burn in, check if there is a chunk of n_keep samples to
-                if save_burn_in:
-                    write_samples = (n_steps >= self.n_keep - 1) and (
-                        (np.mod(n_steps + 1, self.n_keep)) == 0
-                    )
-                else:
-                    write_samples = (n_steps >= self.n_burn - 1) and (
-                        np.mod(n_steps + 1, self.n_keep)
-                    ) == 0
+            # parallel computing
+            delayed_results = []
+            for ind in range(self.n_chains):
+                chain_model = self.chains[ind]
 
-                # parallel computing
-                delayed_results = []
-                for ind in range(self.n_chains):
-                    chain_model = self.chains[ind]
-
-                    # rotation matrix step needs to be before step
+                # rotation matrix step needs to be before step
+                if rotation:
                     chain_model.update_rotation_matrix(burn_in)
-                    updated_model = client.submit(
-                        self.perform_step,
-                        chain_model,
-                        max_perturbations,
-                    )
-                    # update model param hist
-                    chain_model.update_model_hist()
-                    delayed_results.append(updated_model)
+                """
+                updated_model = client.submit(
+                    self.perform_step,
+                    chain_model,
+                    max_perturbations,
+                )
+                """
+                updated_model = self.perform_step(
+                    chain_model,
+                    max_perturbations,
+                )
+                # update model param hist
+                # add back in later
+                # chain_model.update_model_hist()
 
-                # synchronizing the separate chains
-                self.chains = await client.gather(delayed_results)
+                delayed_results.append(updated_model)
+                # delayed_results.append(updated_model)
 
-                if self.n_chains > 1:
-                    # tempering exchange move
-                    self.perform_tempering_swap()
+            # synchronizing the separate chains
+            # self.chains = await client.gather(delayed_results)
+            self.chains = delayed_results
 
-                # if it converges, need to save final samples
+            if self.n_chains > 1:
+                # tempering exchange move
+                self.perform_tempering_swap()
 
-                # check convergence using model param hist
-                hist_diff = self.check_convergence(n_steps, hist_conv)
-                # saving sample and write to file
-                self.store_samples(write_samples, hist_diff, n_steps, out_dir)
+            # if it converges, need to save final samples
 
-    async def perform_step(
+            # check convergence using model param hist
+            # add back later ***
+            # hist_diff = self.check_convergence(n_steps, hist_conv, out_dir)
+            hist_diff = 0.5
+            n_samples = self.n_keep
+            # saving sample and write to file
+            self.store_samples(hist_diff, n_steps, n_samples, out_dir, write_samples)
+            # hist_diff, n_step, n_samples, out_dir, write_samples
+
+    # async def perform_step(
+    def perform_step(
         self,
         chain_model,
         max_perturbations,
@@ -224,10 +265,12 @@ class Inversion:
         perturb each param on the chain model and accept each new model with a likelihood.
         """
         # *** what kind of random distribution should this be, and should there be a lower bound...? ***
-        n_perturbations = np.random.uniform(max_perturbations)
-        for _ in n_perturbations:
+        n_perturbations = int(np.random.uniform(max_perturbations))
+        for _ in range(n_perturbations):
             # evolve model forward by perturbing each parameter and accepting/rejecting new model based on MH criteria
-            chain_model.perturb_params()
+            chain_model.perturb_params(
+                self.param_bounds, self.data.periods, self.data.data_obs
+            )
 
         return chain_model
 
@@ -309,9 +352,7 @@ class Inversion:
 
         return hist_diff
 
-    def store_samples(
-        self, hist_diff, n_step, n_samples, out_dir, write_samples, create_file
-    ):
+    def store_samples(self, hist_diff, n_step, n_samples, out_dir, write_samples=True):
         """
         write out to .zarr in chunks of size n_keep.
 
@@ -322,56 +363,75 @@ class Inversion:
         :param out_dir: the output directory where to save results.
         """
         for chain in self.chains:
-            # *** how to save model_hist? ***
-            chain.update_model_hist()
+            # add back later ***
+            # chain.update_model_hist()
+
             # saving the chain model with beta of 1
             # *** also there are multiple chains like that. which one do i save? ***
             if chain.beta == 1:
                 # maybe move this to model class
-                self.stored_results["params"].append(chain.model_params)
+                # self.stored_results["params"].append(chain.model_params.copy())
+                self.stored_results["thickness"].append(chain.thickness.copy())
+                self.stored_results["vel_s"].append(chain.vel_s.copy())
+                # self.stored_results["logL"].append(chain.logL.copy())
                 self.stored_results["logL"].append(chain.logL)
+                # self.stored_results["data_pred"].append(chain.data_pred.copy())
+                self.stored_results["data_pred"].append(chain.data_pred)
                 self.stored_results["beta"].append(chain.beta)
-                self.stored_results["rot_mat"].append(chain.rot_mat)
-                self.stored_results["sigma_pd"].append(chain.sigma_pd)
-                self.stored_results["hist_diff"].append(hist_diff)
-                self.stored_results["acc_rate"].append(
-                    chain.swap_acc / (chain.swap_acc + chain.swap_prop)
-                )
+                # self.stored_results["rot_mat"].append(chain.rot_mat)
+                # self.stored_results["sigma_model"].append(chain.sigma_model)
+                # self.stored_results["hist_diff"].append(hist_diff)
+                # self.stored_results["acc_rate"].append(
+                #    chain.swap_acc / (chain.swap_acc + chain.swap_prop)
+                # )
 
         if write_samples:
             # *** i don't like the way this is getting n_params. ***
-            n_params = len(self.stored_results["params"][0])
+            # n_params = len(self.stored_results["params"][0])
             # create dataset to store results
             ds_results = xr.Dataset(
-                coords={
-                    "step": np.zeros(n_samples),
-                    "param": np.arange(n_params),
-                },
-            )
-
-            # add model params, logL, sigma_pd, rot_mat to the results dataset
-            ds_results.update(
-                {
-                    "step": np.arange(n_step + 1 - n_samples, n_step + 1),
-                    "params": (
-                        ["step", "param"],
-                        self.stored_results["params"],
-                    ),
+                data_vars={
+                    "data_obs": self.data.data_obs,
+                    "data_pred": (["step", "n_data"], self.stored_results["data_pred"]),
                     "logL": (["step"], self.stored_results["logL"]),
-                    "sigma_model": (["step"], self.stored_results["sigma_model"]),
-                    "rot_mat": (
-                        ["step", "param", "param"],
-                        self.stored_results["rot_mat"],
+                    # "params": (
+                    #    ["step", "param"],
+                    #    self.stored_results["params"],
+                    # ),
+                    "thickness": (
+                        ["step", "n_layer"],
+                        np.concatenate(
+                            (
+                                self.stored_results["thickness"],
+                                np.zeros((len(self.stored_results["thickness"]), 1)),
+                            ),
+                            axis=1,
+                        ),
                     ),
-                    "hist_diff": (
-                        ["step", "param"],
-                        self.stored_results["hist_diff"],
+                    "vel_s": (
+                        ["step", "n_layer"],
+                        self.stored_results["vel_s"],
                     ),
-                    "acc_rate": (
-                        ["step", "param"],
-                        self.stored_results["acc_rate"],
-                    ),
-                }
+                    # "rot_mat": (
+                    #    ["step", "param", "param"],
+                    #    self.stored_results["rot_mat"],
+                    # ),
+                    # "hist_diff": (
+                    #    ["step", "param"],
+                    #    self.stored_results["hist_diff"],
+                    # ),
+                    # "acc_rate": (
+                    #    ["step", "param"],
+                    #    self.stored_results["acc_rate"],
+                    # ),
+                },
+                coords={
+                    # "step": np.arange(n_step + 1 - n_samples, n_step + 1),
+                    "step": np.arange(n_step + 1, n_step + 1 + n_samples),
+                    # "param": np.arange(n_params),
+                    "n_data": np.arange(self.data.n_data),
+                    "n_layer": np.arange(chain.n_layers),
+                },
             )
 
             # if the output folder doesn't exist, create it.
@@ -379,19 +439,41 @@ class Inversion:
             if not os.path.isdir(path_dir):
                 os.mkdir(path_dir)
 
+            # also save input model: bounds, starting model
             # if this is the first iteration, create a file to save ds_results. otherwise append the results.
-            if create_file:
-                ds_results.to_zarr(out_dir)
+            if not os.path.isfile(out_dir):
+                # ds_results.to_zarr(out_dir)
+                ds_results.to_netcdf(out_dir)
             else:
-                ds_results.to_zarr(out_dir, append_dim="step")
+                # not happy with this ***
+                ds_full = xr.open_dataset(out_dir).load()
+                ds_full.close()
+                ds = xr.concat([ds_full, ds_results], dim="step")
+                ds.to_netcdf(out_dir)  # , append_dim="step")
 
+                """
+                with xr.open_dataset(out_dir, mode="a") as ds_full:
+                    # ds_results.to_zarr(out_dir, append_dim="step")
+                    # ds_full = xr.open_dataset(out_dir)  # , engine="netcdf4")
+                    print(ds_full)
+                    print(ds_results)
+                    ds = xr.concat([ds_full, ds_results], dim="step")
+                    # combined_ds = xr.combine_by_coords(
+                    #    [ds_full, ds_results]
+                    # )  # , coords="step")
+
+                    ds.to_netcdf(out_dir)  # , append_dim="step")
+                """
             # clear stored results after saving.
             self.stored_results = {
-                "params": [],
+                # "params": [],
+                "thickness": [],
+                "vel_s": [],
+                "data_pred": [],
                 "logL": [],
                 "beta": [],
-                "rot_mat": [],
-                "sigma_pd": [],
-                "hist_diff": [],
-                "acc_rate": [],
+                # "rot_mat": [],
+                # "sigma_model": [],
+                # "hist_diff": [],
+                # "acc_rate": [],
             }
