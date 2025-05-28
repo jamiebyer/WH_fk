@@ -1,6 +1,8 @@
 import numpy as np
 import sys
 
+from disba import PhaseDispersion
+from disba._exception import DispersionError
 from inversion.forward_model import Model
 from dask.distributed import Client
 import os
@@ -59,7 +61,7 @@ class Inversion:
 
         self.n_keep = n_keep
         # self.n_mcmc = 100000 * n_keep  # number of steps for the random walk
-        self.n_mcmc = 100 * n_keep  # number of steps for the random walk
+        self.n_mcmc = 1000 * n_keep  # number of steps for the random walk
 
         # initialize chains, generate starting params.
         self.n_chains = n_chains
@@ -77,18 +79,18 @@ class Inversion:
         # parameters for saving data
         self.n_bins = n_bins
         self.stored_results = {
-            # "params": [],
             "thickness": [],
             "vel_s": [],
+            "vel_p": [],
+            "density": [],
             "data_pred": [],
             "logL": [],
             "beta": [],
             # "rot_mat": [],
             # "sigma_model": [],
             # "hist_diff": [],
-            "swap_acc": [],
-            "swap_prop": [],
-            # "acc_rate": [],
+            "acc_rate": [],
+            "err_ratio": [],
         }
 
     def get_betas(self, beta_spacing_factor):
@@ -146,26 +148,37 @@ class Inversion:
                 betas[ind],
                 n_bins,
             )
-            # model.model_params = model.generate_model_params(param_bounds)
-            # velocity_model = np.array([[0.03, 0], [1.6, 2.5], [0.4, 1.5], [2.0, 2.5]])
+            # sample
+            valid_params = False
+            while not valid_params:
+                thickness = np.random.uniform(
+                    self.param_bounds["thickness"][0],
+                    self.param_bounds["thickness"][1],
+                    (n_layers - 1),
+                )
+                vel_s = np.random.uniform(
+                    self.param_bounds["vel_s"][0],
+                    self.param_bounds["vel_s"][1],
+                    n_layers,
+                )
 
-            model.thickness = np.array([0.03])
-            model.vel_s = np.array([0.4, 1.5])
-            model.vel_p = np.array([1.6, 2.5])
-            model.density = np.array([2.0, 2.5])
+                velocity_model, valid_params = model.get_velocity_model(
+                    param_bounds, thickness, vel_s
+                )
+                # set initial likelihood
+                try:
+                    model.logL, model.data_pred = model.get_likelihood(
+                        velocity_model, self.data
+                    )
+                except (DispersionError, ZeroDivisionError) as e:
+                    valid_params = False
 
-            # velocity_model, valid_params = model.get_velocity_model()
-            velocity_model = np.array([[0.03, 0], [1.6, 2.5], [0.4, 1.5], [2.0, 2.5]])
+            model.thickness = thickness
+            model.vel_s = vel_s
 
-            # set initial likelihood
-            model.logL, model.data_pred = model.get_likelihood(
-                self.data.periods, velocity_model, self.data.data_obs
-            )
             # get initial model
             if optimize_starting_model:
-                model_params = model.get_optimization_model(
-                    param_bounds, self.data.periods, self.data.data_obs
-                )
+                model_params = model.get_optimization_model(param_bounds, self.data)
                 model.model_params = model_params
 
             chains.append(model)
@@ -179,6 +192,8 @@ class Inversion:
         hist_conv,
         save_burn_in=True,
         rotation=False,
+        out_filename=None,
+        sample_prior=False,
     ):
         """
         perform the main loop, for n_mcmc iterations.
@@ -188,7 +203,10 @@ class Inversion:
         :param out_dir: directory where to save results.
         :param save_burn_in:
         """
-        out_dir = "./results/inversion/results" + str(int(time.time())) + ".nc"
+        if not out_filename:
+            out_dir = "./results/inversion/results" + str(int(time.time())) + ".nc"
+        else:
+            out_dir = "./results/inversion/results" + out_filename + ".nc"
         # all chains need to be on the same step number to compare
         # async with Client(asynchronous=True) as client:
         for n_steps in range(self.n_mcmc):
@@ -225,8 +243,7 @@ class Inversion:
                 )
                 """
                 updated_model = self.perform_step(
-                    chain_model,
-                    max_perturbations,
+                    chain_model, max_perturbations, sample_prior=sample_prior
                 )
                 # update model param hist
                 # add back in later
@@ -259,6 +276,7 @@ class Inversion:
         self,
         chain_model,
         max_perturbations,
+        sample_prior=False,
     ):
         """
         update one chain model.
@@ -269,7 +287,9 @@ class Inversion:
         for _ in range(n_perturbations):
             # evolve model forward by perturbing each parameter and accepting/rejecting new model based on MH criteria
             chain_model.perturb_params(
-                self.param_bounds, self.data.periods, self.data.data_obs
+                self.param_bounds,
+                self.data,
+                sample_prior=sample_prior,
             )
 
         return chain_model
@@ -372,8 +392,11 @@ class Inversion:
                 # maybe move this to model class
                 # self.stored_results["params"].append(chain.model_params.copy())
                 self.stored_results["thickness"].append(chain.thickness.copy())
+                if self.stored_results["thickness"][-1] > 0.1:
+                    print("stored failed")
                 self.stored_results["vel_s"].append(chain.vel_s.copy())
-                # self.stored_results["logL"].append(chain.logL.copy())
+                self.stored_results["vel_p"].append(chain.vel_p.copy())
+                self.stored_results["density"].append(chain.density.copy())
                 self.stored_results["logL"].append(chain.logL)
                 # self.stored_results["data_pred"].append(chain.data_pred.copy())
                 self.stored_results["data_pred"].append(chain.data_pred)
@@ -381,9 +404,18 @@ class Inversion:
                 # self.stored_results["rot_mat"].append(chain.rot_mat)
                 # self.stored_results["sigma_model"].append(chain.sigma_model)
                 # self.stored_results["hist_diff"].append(hist_diff)
-                # self.stored_results["acc_rate"].append(
-                #    chain.swap_acc / (chain.swap_acc + chain.swap_prop)
-                # )
+                if chain.swap_acc == 0:
+                    self.stored_results["acc_rate"].append(0)
+                else:
+                    self.stored_results["acc_rate"].append(
+                        chain.swap_acc / (chain.swap_acc + chain.swap_prop)
+                    )
+                if chain.swap_prop == 0:
+                    self.stored_results["err_ratio"].append(0)
+                else:
+                    self.stored_results["err_ratio"].append(
+                        chain.swap_err / chain.swap_prop
+                    )
 
         if write_samples:
             # *** i don't like the way this is getting n_params. ***
@@ -412,6 +444,14 @@ class Inversion:
                         ["step", "n_layer"],
                         self.stored_results["vel_s"],
                     ),
+                    "vel_p": (
+                        ["step", "n_layer"],
+                        self.stored_results["vel_p"],
+                    ),
+                    "density": (
+                        ["step", "n_layer"],
+                        self.stored_results["density"],
+                    ),
                     # "rot_mat": (
                     #    ["step", "param", "param"],
                     #    self.stored_results["rot_mat"],
@@ -420,10 +460,14 @@ class Inversion:
                     #    ["step", "param"],
                     #    self.stored_results["hist_diff"],
                     # ),
-                    # "acc_rate": (
-                    #    ["step", "param"],
-                    #    self.stored_results["acc_rate"],
-                    # ),
+                    "acc_rate": (
+                        ["step"],
+                        self.stored_results["acc_rate"],
+                    ),
+                    "err_ratio": (
+                        ["step"],
+                        self.stored_results["err_ratio"],
+                    ),
                 },
                 coords={
                     # "step": np.arange(n_step + 1 - n_samples, n_step + 1),
@@ -469,11 +513,14 @@ class Inversion:
                 # "params": [],
                 "thickness": [],
                 "vel_s": [],
+                "vel_p": [],
+                "density": [],
                 "data_pred": [],
                 "logL": [],
                 "beta": [],
                 # "rot_mat": [],
                 # "sigma_model": [],
                 # "hist_diff": [],
-                # "acc_rate": [],
+                "acc_rate": [],
+                "err_ratio": [],
             }

@@ -4,6 +4,7 @@ from disba._exception import DispersionError
 import pandas as pd
 from scipy import interpolate
 import matplotlib.pyplot as plt
+from fk_processing.run_geopsy import get_dispersion_curve
 
 np.complex_ = np.complex64
 
@@ -12,33 +13,39 @@ class Data:
     def __init__(self, periods, data_obs, sigma_data):
         self.periods = periods
         self.data_obs = data_obs
-        self.sigma_data = sigma_data
         self.n_data = len(self.data_obs)
+        self.sigma_data = sigma_data
+
+        if len(sigma_data) == self.n_data:
+            self.data_cov = np.diag(sigma_data**2)
+        elif len(sigma_data) == 1:
+            self.data_cov = np.eye(self.n_data) * sigma_data
 
 
 class FieldData(Data):
     def __init__(self, path):
-        self.read_observed_data(path)
+        periods, phase_vels, stds = self.read_observed_data(path)
 
-        super().__init__()
+        super().__init__(periods, phase_vels, stds)
 
     def read_observed_data(self, path):
         """
         read dispersion curve
         """
-        names = ["frequency", "slowness", "std", "n_bins", "valid"]
-        df = pd.read_csv(path, sep="\s+", names=names)
+        freqs, phase_vels, stds = get_dispersion_curve(path)
+        periods = 1 / freqs
+        # sort
 
-        periods = np.flip(1 / df["frequency"])
-        phase_vel = 1 / df["slowness"]
-
-        return periods, phase_vel
+        return periods, phase_vels, stds
 
 
 class SyntheticData(Data):
     def __init__(self, periods, sigma_data, thickness, vel_s, vel_p, density):
         velocity_model = np.array([thickness + [0], vel_p, vel_s, density])
-        data_obs = self.generate_observed_data(periods, sigma_data, velocity_model)
+        data_true, data_obs = self.generate_observed_data(
+            periods, sigma_data, velocity_model
+        )
+        self.data_true = data_true
         super().__init__(periods, data_obs, sigma_data)
 
     def generate_observed_data(self, periods, sigma_data, velocity_model):
@@ -47,7 +54,44 @@ class SyntheticData(Data):
 
         data_true = pd_rayleigh.velocity
         data_obs = data_true + sigma_data * np.random.randn(len(periods))
-        return data_obs
+        return data_true, data_obs
+
+
+class GeneratedData(Data):
+
+    def __init__(self, periods, sigma_data, bounds, n_layers):
+        # velocity_model = np.array([thickness + [0], vel_p, vel_s, density])
+        data_true, data_obs = self.generate_observed_data(
+            periods, sigma_data, bounds, n_layers
+        )
+        self.data_true = data_true
+        super().__init__(periods, data_obs, sigma_data)
+
+    def generate_observed_data(self, periods, sigma_data, bounds, n_layers):
+        valid_params = False
+        while not valid_params:
+            thickness = np.random.uniform(
+                bounds["thickness"][0],
+                bounds["thickness"][1],
+                n_layers - 1,
+            )
+            vel_s = np.random.uniform(bounds["vel_s"][0], bounds["vel_s"][1], n_layers)
+            vel_p = np.random.uniform(bounds["vel_p"][0], bounds["vel_p"][1], n_layers)
+            density = np.random.uniform(
+                bounds["density"][0], bounds["density"][1], n_layers
+            )
+            velocity_model = np.array([list(thickness) + [0], vel_p, vel_s, density])
+
+            try:
+                pd = PhaseDispersion(*velocity_model)
+                pd_rayleigh = pd(periods, mode=0, wave="rayleigh")
+                valid_params = True
+            except (DispersionError, ZeroDivisionError) as e:
+                pass
+
+        data_true = pd_rayleigh.velocity
+        data_obs = data_true + sigma_data * np.random.randn(len(periods))
+        return data_true, data_obs
 
 
 class Model:
@@ -97,6 +141,7 @@ class Model:
         # acceptance ratio for each parameter
         self.swap_acc = 0
         self.swap_prop = 0
+        self.swap_err = 0
 
         # initialize histogram of model parameters
         self.n_bins = n_bins
@@ -158,7 +203,7 @@ class Model:
         return vel_p
 
     def get_density(self, vel_p):
-        density = (1741 * vel_p**0.25) / 1000
+        density = (1741 * np.sign(vel_p) * abs(vel_p) ** (1 / 4)) / 1000
         return density
 
     @staticmethod
@@ -184,9 +229,6 @@ class Model:
     def get_velocity_model(self, param_bounds, thickness, vel_s):
         vel_p = self.get_vel_p(vel_s)
         density = self.get_density(vel_p)
-
-        # if vel_p[1] > 6:
-        #    assert True == False
         velocity_model = np.array([list(thickness) + [0], vel_p, vel_s, density])
 
         # validate bounds and physics...
@@ -220,7 +262,6 @@ class Model:
         # get phase dispersion curve
         # thickness, Vp, Vs, density
         # km, km/s, km/s, g/cm3
-
         pd = PhaseDispersion(*velocity_model)
 
         # try calculating phase_velocity from given params.
@@ -250,12 +291,11 @@ class Model:
     def get_optimization_model(
         self,
         param_bounds,
-        periods,
-        data_obs,
+        data,
         T_0=100,
         epsilon=0.95,
-        ts=300,
-        n_steps=5000,
+        ts=100,
+        n_steps=1000,
     ):
         """
         :param T_0: initial temp
@@ -277,6 +317,8 @@ class Model:
             # "params": [],
             "thickness": [],
             "vel_s": [],
+            "vel_p": [],
+            "density": [],
             "logL": [],
         }
 
@@ -288,20 +330,27 @@ class Model:
                 print(_)
                 # perturb each parameter
                 # if using the perturb params function, it does the acceptance rate stats in the function
-                self.perturb_params(param_bounds, periods, data_obs)
+                self.perturb_params(param_bounds, data, T=T)
 
                 results["temps"].append(T)
-                # results["params"].append(self.model_params.copy())
                 results["thickness"].append(self.thickness.copy())
                 results["vel_s"].append(self.vel_s.copy())
+                results["vel_p"].append(self.vel_p.copy())
+                results["density"].append(self.density.copy())
                 results["logL"].append(self.logL)
 
         df = pd.DataFrame(results)
         df.to_csv("./results/inversion/optimize_model.csv")
 
-        # return #results["params"][-1]
-
-    def perturb_params(self, param_bounds, periods, data_obs, rotation=False):
+    def perturb_params(
+        self,
+        param_bounds,
+        data,
+        rotation=False,
+        T=None,
+        sample_prior=False,
+        prior_dist="cauchy",
+    ):
         """
         loop over each model parameter, perturb its value, validate the value,
         calculate likelihood, and accept the new model with a probability.
@@ -321,19 +370,7 @@ class Model:
                 np.transpose(self.rot_mat), param_bounds[:, :1] - param_bounds[:, 0]
             )
 
-            valid_params = False
-            while valid_params is False:
-                # generate params to try; Cauchy proposal
-                perturbed_rotated_params = rotated_params + (
-                    self.sigma_model
-                    * np.tan(np.pi * (np.random.rand(self.n_params) - 0.5))
-                )
-                # validate params
-
-                # boolean array of valid params
-                valid_params = (perturbed_rotated_params >= rotated_bounds[:, 0]) & (
-                    perturbed_rotated_params <= rotated_bounds[:, 1]
-                )
+            # validate params
 
             # rotating back
             perturbed_norm_params = np.matmul(self.rot_mat, perturbed_rotated_params)
@@ -342,57 +379,100 @@ class Model:
                 perturbed_norm_params * param_bounds[:, 2]
             )
 
+        # thickness_scale, vel_s_scale = 10, 100
+        thickness_scale, vel_s_scale = 0.001, 0.001
+        # thickness_scale, vel_s_scale = 1, 1
         # loop over params and perturb each individually
-
         for ind in range(len(self.thickness)):
-            valid_params = False
-            while valid_params == False:
-                test_thickness = self.thickness.copy()
-                test_thickness[ind] += self.sigma_model * np.tan(
-                    np.pi * (np.random.rand() - 0.5)
+            test_thickness = self.thickness.copy()
+            # uniform distribution
+            if prior_dist == "uniform":
+                test_thickness[ind] += (
+                    (np.random.uniform() - 0.5)
+                    * thickness_scale
+                    * self.sigma_model["thickness"]
+                    * (param_bounds["thickness"][1] - param_bounds["thickness"][0])
+                    / 2
+                )
+            elif prior_dist == "cauchy":
+                # cauchy distribution
+                test_thickness[ind] += (
+                    self.sigma_model["thickness"]
+                    * thickness_scale
+                    * np.tan(np.pi * (np.random.uniform() - 0.5))
                 )
 
-                test_velocity_model, valid_params = self.get_velocity_model(
-                    param_bounds, test_thickness, self.vel_s.copy()
-                )
+            test_velocity_model, valid_params = self.get_velocity_model(
+                param_bounds, test_thickness, self.vel_s.copy()
+            )
 
             # check acceptance criteria
-            acc = self.acceptance_criteria(periods, test_velocity_model, data_obs)
+            acc = self.acceptance_criteria(
+                test_velocity_model, valid_params, data, sample_prior=sample_prior, T=T
+            )
             if acc:
                 self.thickness = test_thickness.copy()
+                self.swap_acc += 1
+            elif not sample_prior:
+                self.swap_prop += 1
 
         for ind in range(len(self.vel_s)):
-            valid_params = False
-            while valid_params == False:
-                test_vel_s = self.vel_s.copy()
-                test_vel_s[ind] += self.sigma_model * np.tan(
-                    np.pi * (np.random.rand() - 0.5)
+            test_vel_s = self.vel_s.copy()
+            if prior_dist == "uniform":
+                # uniform distribution
+                test_vel_s[ind] += (
+                    (np.random.uniform() - 0.5)
+                    * vel_s_scale
+                    * self.sigma_model["vel_s"]
+                    * (param_bounds["vel_s"][1] - param_bounds["vel_s"][0])
+                    / 2
+                )
+            elif prior_dist == "cauchy":
+                # cauchy distribution
+                test_vel_s[ind] += (
+                    self.sigma_model["vel_s"]
+                    * vel_s_scale
+                    * np.tan(np.pi * (np.random.uniform() - 0.5))
                 )
 
-                test_velocity_model, valid_params = self.get_velocity_model(
-                    param_bounds, self.thickness.copy(), test_vel_s
-                )
+            test_velocity_model, valid_params = self.get_velocity_model(
+                param_bounds, self.thickness.copy(), test_vel_s
+            )
 
             # check acceptance criteria
-            acc = self.acceptance_criteria(periods, test_velocity_model, data_obs)
-
+            acc = self.acceptance_criteria(
+                test_velocity_model, valid_params, data, sample_prior=sample_prior, T=T
+            )
             if acc:
                 self.vel_s = test_vel_s.copy()
+                self.swap_acc += 1
+            elif not sample_prior:
+                self.swap_prop += 1
 
-    def acceptance_criteria(self, periods, test_velocity_model, data_obs):
+    def acceptance_criteria(
+        self, test_velocity_model, valid_params, data, T, sample_prior
+    ):
+        if not valid_params:
+            return False
+        if sample_prior:
+            logL_new = 1
+            return True
+
         try:
-            logL_new, data_pred_new = self.get_likelihood(
-                periods, test_velocity_model, data_obs
-            )
+            logL_new, data_pred_new = self.get_likelihood(test_velocity_model, data)
         except (DispersionError, ZeroDivisionError):
             # add specific condition here for failed forward model
+            self.swap_err += 1
             return False
 
         # Compute likelihood ratio in log space:
         dlogL = logL_new - self.logL
+        if T is not None:
+            dlogL = dlogL / T
+
         xi = np.random.rand(1)
         # Apply MH criterion (accept/reject)
-        if dlogL < 0 or xi <= np.exp(dlogL):
+        if dlogL < 0 or xi <= np.exp(-dlogL):
             self.swap_acc += 1
             self.logL = logL_new
             self.data_pred = data_pred_new
@@ -519,18 +599,17 @@ class Model:
 
         return rot_mat, sigma_model
 
-    def get_likelihood(self, periods, velocity_model, data_obs):
+    def get_likelihood(self, velocity_model, data):
         """
         :param model_params: params to calculate likelihood with
         """
         # return 1, periods
         try:
-            data_pred = self.forward_model(periods, velocity_model)
-            residuals = data_obs - data_pred
+            data_pred = self.forward_model(data.periods, velocity_model)
+            residuals = data.data_obs - data_pred
             # for identical errors
-            logL = np.sum(residuals**2) / self.sigma_model
-            # for independent errors
-            # logL = np.sum((residuals**2) / (self.sigma_model**2))
+            # logL = np.sum(residuals**2) / (self.sigma_model**2)
+            logL = (residuals**2).T @ (1 / data.data_cov) @ (data.sigma_data**2)
 
             return logL, data_pred
 

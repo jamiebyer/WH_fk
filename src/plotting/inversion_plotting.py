@@ -413,7 +413,7 @@ def plot_observed_data():
 def plot_optimized_model():
     df = pd.read_csv("./results/inversion/optimize_model.csv", index_col=0)
 
-    plt.plot(df["logL"])
+    plt.plot(df["logL"][500:])
     plt.ylabel("logL")
     plt.title("optimize model")
     plt.show()
@@ -438,17 +438,62 @@ def plot_optimized_model():
 
         vel_s.append(np.array(par, dtype=float))
 
-    plt.subplot(3, 1, 1)
-    plt.plot(np.array(thickness)[:, 0])
+    vel_p = []
+    for p in df["vel_p"]:
+        par = p.removeprefix("[").removesuffix("]")
+        par = par.replace("'", "").replace("  ", " ")
+        # par = par.split(" ")
+        par = par.split(" ")
+        par = [i for i in par if i]
+
+        vel_p.append(np.array(par, dtype=float))
+
+    density = []
+    for p in df["density"]:
+        par = p.removeprefix("[").removesuffix("]")
+        par = par.replace("'", "").replace("  ", " ")
+        # par = par.split(" ")
+        par = par.split(" ")
+        par = [i for i in par if i]
+
+        density.append(np.array(par, dtype=float))
+
+    m = [0.03] + [0.4, 1.5] + [1.6, 2.5] + [2.0, 2.5]
+
+    plt.subplot(2, 4, 1)
+    plt.plot(np.array(thickness)[500:, 0])
+    plt.axhline(m[0], c="red")
     plt.ylabel("thickness 1")
 
-    plt.subplot(3, 1, 2)
-    plt.plot(np.array(vel_s)[:, 0])
+    plt.subplot(2, 4, 3)
+    plt.plot(np.array(vel_s)[500:, 0])
+    plt.axhline(m[1], c="red")
+    plt.ylabel("vel s 1")
+
+    plt.subplot(2, 4, 4)
+    plt.plot(np.array(vel_s)[500:, 1])
+    plt.axhline(m[2], c="red")
     plt.ylabel("vel s 2")
 
-    plt.subplot(3, 1, 3)
-    plt.plot(np.array(vel_s)[:, 1])
-    plt.ylabel("vel s 1")
+    plt.subplot(2, 4, 5)
+    plt.plot(np.array(vel_p)[500:, 0])
+    plt.axhline(m[3], c="red")
+    plt.ylabel("vel p 1")
+
+    plt.subplot(2, 4, 6)
+    plt.plot(np.array(vel_p)[500:, 1])
+    plt.axhline(m[4], c="red")
+    plt.ylabel("vel p 2")
+
+    plt.subplot(2, 4, 7)
+    plt.plot(np.array(density)[500:, 0])
+    plt.axhline(m[5], c="red")
+    plt.ylabel("density 1")
+
+    plt.subplot(2, 4, 8)
+    plt.plot(np.array(density)[500:, 1])
+    plt.axhline(m[6], c="red")
+    plt.ylabel("density 2")
 
     plt.suptitle("optimize model")
     plt.show()
@@ -518,45 +563,69 @@ def plot_inversion_results_param_time(in_path):
     ds = xr.open_dataset(in_path)
 
     bounds = {
-        "thickness": [0.01, 1],  # km
+        "thickness": [0.001, 0.1],  # km
         "vel_p": [0.1, 6],  # km/s
-        "vel_s": [0.1, 5],  # km/s
-        "density": [0.5, 5],  # g/cm^3
-        # "sigma_model": [0.01, 0.3],
+        "vel_s": [0.1, 1.8],  # km/s
+        "density": [0.5, 3],  # g/cm^3
     }
 
-    plt.subplot(3, 1, 1)
+    m = [0.03] + [0.4, 1.5] + [1.6, 2.5] + [2.0, 2.5]
+
+    # plt.subplot(4, 2, 1)
+    plt.subplot(2, 2, 1)
     plt.plot(ds["thickness"][:, 0])
+    plt.axhline(m[0], c="red")
     plt.axhline(bounds["thickness"][0], c="black")
     plt.axhline(bounds["thickness"][1], c="black")
-    plt.ylabel("thickness 1")
+    plt.ylabel("thickness 1 (km)")
+    plt.xlabel("step")
 
-    plt.subplot(3, 1, 2)
+    # plt.subplot(4, 2, 2)
+    plt.subplot(2, 2, 2)
     plt.plot(ds["vel_s"][:, 0])
+    plt.axhline(m[1], c="red")
     plt.axhline(bounds["vel_s"][0], c="black")
     plt.axhline(bounds["vel_s"][1], c="black")
-    plt.ylabel("vel_s 1")
-    plt.subplot(3, 1, 3)
+    plt.ylabel("vel_s 1 (km/s)")
+    plt.xlabel("step")
+    # plt.subplot(4, 2, 3)
+    plt.subplot(2, 2, 3)
     plt.plot(ds["vel_s"][:, 1])
+    plt.axhline(m[2], c="red")
     plt.axhline(bounds["vel_s"][0], c="black")
     plt.axhline(bounds["vel_s"][1], c="black")
-    plt.ylabel("vel_s 2")
+    plt.ylabel("vel_s 2 (km/s)")
+    plt.xlabel("step")
+
+    plt.subplot(2, 2, 4)
+    plt.plot(ds["acc_rate"])
+    plt.plot(ds["err_ratio"])
+    # plt.ylabel("")
+    plt.legend(["acc_rate", "err_ratio"])
 
     """
-    plt.subplot(3, 3, 4)
+    plt.subplot(4, 2, 4)
+    plt.axhline(m[3], c="red")
+    plt.plot(ds["vel_p"][:, 0])
     plt.axhline(bounds["vel_p"][0], c="black")
     plt.axhline(bounds["vel_p"][1], c="black")
     plt.ylabel("vel_p 1")
-    plt.subplot(3, 3, 5)
+    plt.subplot(4, 2, 5)
+    plt.plot(ds["vel_p"][:, 1])
+    plt.axhline(m[4], c="red")
     plt.axhline(bounds["vel_p"][0], c="black")
     plt.axhline(bounds["vel_p"][1], c="black")
     plt.ylabel("vel_p 2")
 
-    plt.subplot(3, 3, 6)
+    plt.subplot(4, 2, 6)
+    plt.axhline(m[5], c="red")
+    plt.plot(ds["density"][:, 0])
     plt.axhline(bounds["density"][0], c="black")
     plt.axhline(bounds["density"][1], c="black")
     plt.ylabel("density 1")
-    plt.subplot(3, 3, 7)
+    plt.subplot(4, 2, 7)
+    plt.plot(ds["density"][:, 1])
+    plt.axhline(m[6], c="red")
     plt.axhline(bounds["density"][0], c="black")
     plt.axhline(bounds["density"][1], c="black")
     plt.ylabel("density 2")
@@ -579,59 +648,66 @@ def plot_inversion_results_param_prob(in_path):
     # m = [0.5, 10.0, 7.00, 9.50, 3.50, 4.75, 2.00, 2.00]
 
     bounds = {
-        "thickness": [0.01, 1],  # km
+        "thickness": [0.001, 0.1],  # km
         "vel_p": [0.1, 6],  # km/s
-        "vel_s": [0.1, 5],  # km/s
-        "density": [0.5, 5],  # g/cm^3
-        # "sigma_model": [0.01, 0.3],
+        "vel_s": [0.1, 1.8],  # km/s
+        "density": [0.5, 3],  # g/cm^3
     }
 
     # plt.plot(ds["logL"][5:])
     # plt.show()
 
+    # plt.subplot(4, 2, 1)
     plt.subplot(3, 1, 1)
-    plt.hist(ds["thickness"][:, 0], bins=40)
+    plt.hist(ds["thickness"][:, 0][5000:], bins=40, density=True)
     plt.axvline(bounds["thickness"][0], c="black")
     plt.axvline(bounds["thickness"][1], c="black")
     plt.axvline(m[0], c="red")
-    plt.ylabel("thickness 1")
+    plt.xlabel("thickness 1 (km)")
 
+    # plt.subplot(4, 2, 2)
     plt.subplot(3, 1, 2)
-    plt.hist(ds["vel_s"][:, 0], bins=40)
+    plt.hist(ds["vel_s"][:, 0][5000:], bins=40, density=True)
     plt.axvline(bounds["vel_s"][0], c="black")
     plt.axvline(bounds["vel_s"][1], c="black")
     plt.axvline(m[1], c="red")
-    plt.ylabel("vel_s 1")
+    plt.xlabel("vel_s 1 (km/s)")
+    # plt.subplot(4, 2, 3)
     plt.subplot(3, 1, 3)
-    plt.hist(ds["vel_s"][:, 1], bins=40)
+    plt.hist(ds["vel_s"][:, 1][5000:], bins=40, density=True)
     plt.axvline(bounds["vel_s"][0], c="black")
     plt.axvline(bounds["vel_s"][1], c="black")
     plt.axvline(m[2], c="red")
-    plt.ylabel("vel_s 2")
+    plt.xlabel("vel_s 2 (km/s)")
 
     """
-    plt.subplot(3, 3, 4)
+    plt.subplot(4, 2, 4)
+    plt.hist(ds["vel_p"][:, 0], bins=40)
     plt.axvline(bounds["vel_p"][0], c="black")
     plt.axvline(bounds["vel_p"][1], c="black")
     plt.axvline(m[3], c="red")
     plt.ylabel("vel_p 1")
-    plt.subplot(3, 3, 5)
+    plt.subplot(4, 2, 5)
+    plt.hist(ds["vel_p"][:, 1], bins=40)
     plt.axvline(bounds["vel_p"][0], c="black")
     plt.axvline(bounds["vel_p"][1], c="black")
     plt.axvline(m[4], c="red")
     plt.ylabel("vel_p 2")
 
-    plt.subplot(3, 3, 6)
+    plt.subplot(4, 2, 6)
+    plt.hist(ds["density"][:, 0], bins=40)
     plt.axvline(bounds["density"][0], c="black")
     plt.axvline(bounds["density"][1], c="black")
     plt.axvline(m[5], c="red")
     plt.ylabel("density 1")
-    plt.subplot(3, 3, 7)
+    plt.subplot(4, 2, 7)
+    plt.hist(ds["density"][:, 1], bins=40)
     plt.axvline(bounds["density"][0], c="black")
     plt.axvline(bounds["density"][1], c="black")
     plt.axvline(m[6], c="red")
     plt.ylabel("density 2")
     """
+
     plt.tight_layout()
     plt.suptitle("MCMC model params")
 
@@ -641,79 +717,14 @@ def plot_inversion_results_param_prob(in_path):
 def plot_pred_vs_obs(in_path):
     ds = xr.open_dataset(in_path)
 
+    # determine the most probable most and use it to run the forward model
+
     plt.plot(ds["data_obs"])
-    plt.plot(ds.isel(step=slice(-20, -1))["data_pred"].T)
-    # plt.plot(ds["data_pred"].T)
-    plt.legend(["data_obs", "data_pred"])
-    plt.show()
 
-
-def plot_forward_model():
-    n_data = 50
-    sigma_data = 0.2
-    periods = np.flip(1 / np.logspace(-2, 2, n_data))
-
-    # km, km/s, km/s, g/cm3
-    velocity_model = np.array(
-        [
-            # [0.5, 7.00, 3.50, 2.00],
-            # [10.0, 9.50, 4.75, 2.00],
-            # [0.03, 0.8, 0.4, 2.0],
-            # [0.0, 3.0, 1.5, 2.5],
-            [0.03, 1.6, 0.4, 2.0],
-            [0.0, 2.5, 1.5, 2.5],
-        ]
-    ).T
+    # plt.plot(ds.isel(step=slice(-20, -1))["data_pred"].T)
 
     pd = PhaseDispersion(*velocity_model)
     pd_rayleigh = pd(periods, mode=0, wave="rayleigh")
 
-    data_true = pd_rayleigh.velocity
-    data_obs = data_true + sigma_data * np.random.randn(len(periods))
-
-    plt.plot(data_true)
-    plt.plot(data_obs)
-
-    plt.show()
-
-
-def plot_station_positions():
-    pass
-
-
-def plot_generated_params():
-    bounds = {
-        "thickness": [0.01, 1],  # km
-        "vel_p": [0.1, 6],  # km/s
-        "vel_s": [0.1, 5],  # km/s
-        "density": [0.5, 5],  # g/cm^3
-        # "sigma_model": [0.01, 0.3],
-    }
-
-    periods = np.flip(1 / np.logspace(-2, 2, 50))
-    # velocity_model = np.array(
-    #    [
-    #        [0.03, 0.8, 0.4, 2.0],
-    #        [0.0, 3.0, 1.5, 2.5],
-    #    ]
-    # ).T
-
-    param_bounds = Model.assemble_param_bounds(bounds, n_layers=2)
-
-    params = np.random.uniform(
-        param_bounds[:, 0], param_bounds[:, 1], len(param_bounds)
-    )
-
-    velocity_model = np.array(
-        [
-            [params[0], params[3], params[1], params[5]],
-            [0.0, params[4], params[2], params[6]],
-        ]
-    ).T
-
-    pd = PhaseDispersion(*velocity_model)
-    pd_rayleigh = pd(periods, mode=0, wave="rayleigh")
-    dispersion_curve = pd_rayleigh.velocity
-
-    plt.plot(dispersion_curve)
+    plt.legend(["data_obs", "data_true", "data_pred"])
     plt.show()
