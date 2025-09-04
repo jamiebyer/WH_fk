@@ -2,44 +2,12 @@ import subprocess
 import obspy
 import subprocess
 from multiprocessing import Pool
-import datetime
-from obspy import read
 
 import pandas as pd
-import hvsrpy
 import os
-import time
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
-from scipy.interpolate import griddata
-
-from matplotlib.colors import LogNorm
 
 import matplotlib.pyplot as plt
-
-
-def read_data():
-    data_path = "./data/WH01/"
-    for f in os.listdir(data_path):
-        if not f.endswith(".mseed"):
-            continue
-        # data = obspy.read(data_path + "0240_WH01.mseed", "MSEED")
-        data = obspy.read(data_path + f, "MSEED")
-        print(data.traces[0])
-    # data.plot()
-
-    df = pd.read_csv(
-        data_path + "WH01_loc_corrected_geopsy.txt",
-        sep=" ",
-        names=["site", "lat", "lon", "empty"],
-    )
-
-    plt.scatter(df["lon"], df["lat"])
-    plt.show()
-
-
-def fk_sensitivity_test():
-    pass
 
 
 def run_geopsy():
@@ -94,15 +62,30 @@ def run_geopsy():
     """
 
 
-def get_dispersion_curve(max_file):
+def read_txt_file(txt_path):
+    # df = pd.read_csv(
+    #     data_path + "WH01_loc_corrected_geopsy.txt",
+    #     sep=" ",
+    #    names=["site", "lat", "lon", "empty"],
+    # )
 
-    # max_file = "./data/WH02/WH02_fine.max" # jeremy's
-    # max_file = "./data/WH01/WH01_fine.max" # jeremy's
-    # max_file = "./results/WH01/WH01_main.max"
-    # max_file = "./results/WH01/WH01_main.max"
-    # max_file = "./capon-importedsignals.max"
+    ###
 
-    # Open the file in read mode
+    # in_path = "./data/WH02/WH02_curve_fine.txt"
+
+    names = ["frequency", "slowness", "percent_error", "unknown", "valid"]
+    df = pd.read_csv(txt_path, sep="\s+", names=names)
+    return df
+
+
+def read_max_file(max_file):
+    """
+    Plot geopsy ".max" file.
+    Gives time, frequency, slowness, azimuth, power, --
+    """
+
+    # read max file
+    # determine how many lines to skip when reading pd dataframe
     with open(max_file, "r") as file:
         # Read the first line
         line = file.readline()
@@ -114,12 +97,13 @@ def get_dispersion_curve(max_file):
             line = file.readline()  # Read the next line
             ind += 1
 
+    # column names (slightly different for old max files)
     names = [
         "abs_time",
         "frequency",
-        # "polarization",
+        "polarization",
         "slowness",
-        "",
+        # "",
         "azimuth",
         "el",
         "no",
@@ -127,8 +111,13 @@ def get_dispersion_curve(max_file):
         "valid",
     ]
 
-    # df = pd.read_csv(max_file, header=ind, sep=" ")
+    # read ".max" file as dataframe
     df = pd.read_csv(max_file, skiprows=ind, sep="\s+", names=names)
+    return df
+
+
+def compute_dispersion_curve(max_file, f_min, f_max):
+    df = read_max_file(max_file)
 
     freqs_grid = df["frequency"]
     vels_grid = 1 / df["slowness"]
@@ -139,12 +128,21 @@ def get_dispersion_curve(max_file):
     freqs_curve = np.unique(freqs_grid)
     vels_curve = []
     stds_curve = []
+    # for each frequency, save the median velocity, and
+    # compute the standard deviation
     for f in freqs_curve:
         vel = np.median(vels_grid[freqs_grid == f])
         std = np.std(vels_grid[freqs_grid == f])
         vels_curve.append(vel)
         stds_curve.append(std)
 
-    inds = (freqs_curve >= 2) & (freqs_curve <= 8)
+    # save the frequencies between frequency bounds
+    inds = (freqs_curve >= f_min) & (freqs_curve <= f_max)
 
-    return freqs_curve, np.array(vels_curve)[inds], np.array(stds_curve)[inds]
+    return (
+        freqs_grid,
+        vels_grid,
+        freqs_curve[inds],
+        np.array(vels_curve)[inds],
+        np.array(stds_curve)[inds],
+    )
