@@ -21,21 +21,22 @@ np.random.seed(0)
 
 def setup_test_model(n_layers):
     # set up example data
-    posterior_width = {
-        "depth": 0.05,
-        "vel_s": 0.05,
+    proposal_width = {
+        "depth": 0.20,
+        "vel_s": 0.20,
     }  # fractional step size (multiplied by param bounds width)
 
     # set up data and inversion params
     bounds = {
         "depth": np.array([0.001, 0.3]),  # km
         "vel_s": np.array([[0.100, 0.500], [0.300, 1.000], [0.750, 2.000]]),  # km/s
+        # "vel_s": np.array([0.100, 2.000]),  # km/s
     }
     model_params_kwargs = {
         "n_layers": n_layers,
         "vpvs_ratio": 1.75,
         "param_bounds": bounds,
-        "posterior_width": posterior_width,
+        "proposal_width": proposal_width,
     }
     # model params
     model_params = DispersionCurveParams(**model_params_kwargs)
@@ -43,7 +44,7 @@ def setup_test_model(n_layers):
     return model_params
 
 
-def basic_inversion(n_layers, noise, sample_prior, set_starting_model, out_filename):
+def basic_inversion(n_layers, noise, sample_prior, set_starting_model, out_filename=""):
     """
     real noise added to synthetic data (percentage)
     assumed noise used in likelihood calculation (percentage)
@@ -73,7 +74,7 @@ def basic_inversion(n_layers, noise, sample_prior, set_starting_model, out_filen
     inversion_init_kwargs = {
         "n_burn": 1000,
         "n_chunk": 500,
-        "n_mcmc": 5000,
+        "n_mcmc": 10000,
         "n_chains": 1,
         "beta_spacing_factor": 1.15,
         "out_filename": out_filename,
@@ -104,14 +105,11 @@ def test_run_inversions():
     n_layers = 2
     noise = 0.02  # 0.02 # 0.05 # 0.1
 
-    out_filename = "/tests/test-run-field-data-04"
-
     inversion, model_params = basic_inversion(
         n_layers=n_layers,
         noise=noise,
         sample_prior=sample_prior,
         set_starting_model=set_starting_model,
-        out_filename=out_filename,
     )
     inversion.random_walk(
         model_params,
