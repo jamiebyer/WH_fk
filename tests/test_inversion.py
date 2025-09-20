@@ -22,8 +22,8 @@ np.random.seed(0)
 def setup_test_model(n_layers):
     # set up example data
     proposal_width = {
-        "depth": 0.20,
-        "vel_s": 0.20,
+        "depth": [0.20],
+        "vel_s": [0.20],
     }  # fractional step size (multiplied by param bounds width)
 
     # set up data and inversion params
@@ -72,9 +72,9 @@ def basic_inversion(n_layers, noise, sample_prior, set_starting_model, out_filen
     data = FieldData(periods, phase_vels, stds)
 
     inversion_init_kwargs = {
-        "n_burn": 1000,
+        "n_burn": 10000,
         "n_chunk": 500,
-        "n_mcmc": 10000,
+        "n_mcmc": 50000,
         "n_chains": 1,
         "beta_spacing_factor": 1.15,
         "out_filename": out_filename,
@@ -103,7 +103,7 @@ def test_run_inversions():
     set_starting_model = False
     rotate = False
     n_layers = 2
-    noise = 0.02  # 0.02 # 0.05 # 0.1
+    noise = 0.05  # 0.02 # 0.05 # 0.1
 
     inversion, model_params = basic_inversion(
         n_layers=n_layers,
