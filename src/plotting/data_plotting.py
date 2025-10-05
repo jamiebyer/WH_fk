@@ -286,3 +286,121 @@ def plot_geopsy_dispersion_curve(max_path, txt_path):
     plt.title("geopsy dispersion curve")
 
     plt.show()
+
+
+def compare_dispersion_curves(max_path, txt_path, f_min, f_max):
+    plt.figure(figsize=(10, 6))
+
+    df_max = read_max_file(max_path)
+
+    freqs_grid, vels_grid, freqs, vel_meds, vel_means, stds, inds = (
+        compute_dispersion_curve(df_max, f_min, f_max)
+    )
+
+    freq_bins = np.logspace(np.log10(np.min(freqs)), np.log10(np.max(freqs)), 75)
+    vel_bins = np.logspace(np.log10(np.min(vel_meds)), np.log10(np.max(vel_meds)), 100)
+
+    # plt.subplot(1, 2, 1)
+    # plot frequency and velocity 2D histogram
+    plt.hist2d(
+        freqs_grid,
+        vels_grid,
+        bins=[
+            freq_bins,
+            vel_bins,
+        ],
+        cmap="viridis",
+        norm=LogNorm(),
+        zorder=1,
+    )
+
+    plt.xscale("log")
+    plt.yscale("log")
+
+    plt.ylim([190, 2010])
+    plt.xlim([2.0, 8.0])
+
+    plt.xlabel("frequency (Hz)")
+    plt.ylabel("velocity (m/s)")
+
+    plt.colorbar(label="counts")
+
+    # plot dispersion curve with errors
+
+    plt.errorbar(
+        freqs[inds],
+        vel_means[inds],
+        stds[inds],
+        # marker="o",
+        # linestyle=None,
+        label="mean",
+        c="red",
+        elinewidth=3,
+        barsabove=True,
+        fmt="o",
+        ms=5,
+        zorder=2,
+    )
+
+    plt.scatter(
+        freqs[inds],
+        vel_meds[inds],
+        # marker="o",
+        # linestyle="-",
+        label="median",
+        c="yellow",
+        s=50,
+        zorder=3,
+    )
+
+    # txt file
+    df_txt = read_txt_file(txt_path)
+
+    plt.scatter(
+        df_txt["frequency"],
+        1 / df_txt["slowness"],
+        # marker="o",
+        # linestyle="-",
+        label="geopsy",
+        c="orange",
+        s=50,
+        zorder=3,
+    )
+    """
+    plt.errorbar(
+        df_txt["frequency"],
+        1 / df_txt["slowness"],
+        1 / (df_txt["percent_error"] * df_txt["slowness"]),
+        #c="black",
+        alpha=0.5,
+    )
+    """
+
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    """
+    plt.subplot(1, 2, 2)
+    plt.scatter(
+        df_txt["frequency"],
+        (1 / df_txt["slowness"]) - vel_means[inds],
+        # marker="o",
+        # linestyle="-",
+        label="geopsy - mean",
+    )
+    plt.scatter(
+        df_txt["frequency"],
+        (1 / df_txt["slowness"]) - vel_meds[inds],
+        # marker="o",
+        # linestyle="-",
+        label="geopsy - median",
+    )
+    plt.axhline(0)
+    plt.legend()
+    
+    plt.tight_layout()
+    """
+
+    path = "./figures/compare-field-" + max_path.split("/")[-1].split(".")[0] + ".png"
+    plt.savefig(path)

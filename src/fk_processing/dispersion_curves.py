@@ -116,9 +116,7 @@ def read_max_file(max_file):
     return df
 
 
-def compute_dispersion_curve(max_file, f_min, f_max):
-    df = read_max_file(max_file)
-
+def compute_dispersion_curve(df, f_min, f_max):
     freqs_grid = df["frequency"]
     vels_grid = 1 / df["slowness"]
     # az = df["azimuth"]
@@ -126,14 +124,17 @@ def compute_dispersion_curve(max_file, f_min, f_max):
 
     # compute dispersion curve
     freqs_curve = np.unique(freqs_grid)
-    vels_curve = []
+    vel_meds_curve = []
+    vel_means_curve = []
     stds_curve = []
     # for each frequency, save the median velocity, and
     # compute the standard deviation
     for f in freqs_curve:
-        vel = np.median(vels_grid[freqs_grid == f])
+        vel_med = np.median(vels_grid[freqs_grid == f])
+        vel_mean = np.mean(vels_grid[freqs_grid == f])
         std = np.std(vels_grid[freqs_grid == f])
-        vels_curve.append(vel)
+        vel_meds_curve.append(vel_med)
+        vel_means_curve.append(vel_mean)
         stds_curve.append(std)
 
     # save the frequencies between frequency bounds
@@ -142,7 +143,9 @@ def compute_dispersion_curve(max_file, f_min, f_max):
     return (
         freqs_grid,
         vels_grid,
-        freqs_curve[inds],
-        np.array(vels_curve)[inds],
-        np.array(stds_curve)[inds],
+        freqs_curve,
+        np.array(vel_meds_curve),
+        np.array(vel_means_curve),
+        np.array(stds_curve),
+        inds,
     )
