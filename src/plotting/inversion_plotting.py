@@ -28,14 +28,9 @@ def plot_inversion(file_name):
     input_ds.close()
     results_ds.close()
 
-    # plot_results(input_ds, results_ds, out_filename=file_name)
-
-    # plot_covariance_matrix(input_ds, results_ds)
-    # model_params_timeseries(input_ds, results_ds, save=True, out_filename=file_name)
-    model_params_histogram(input_ds, results_ds, save=True, out_filename=file_name)
-    # resulting_model_histogram(input_ds, results_ds, save=True, out_filename=file_name)
-    # plot_data_pred_histogram(input_ds, results_ds, save=True, out_filename=file_name)
-    # plot_likelihood(input_ds, results_ds, save=True, out_filename=file_name)
+    plot_results(input_ds, results_ds, out_filename=file_name, 
+        # plot_prob_model=True,
+    )
 
 
 if __name__ == "__main__":
@@ -47,5 +42,14 @@ if __name__ == "__main__":
 
     # run_inversion()
 
-    file_name = "1757445299"
+    # file_name = "1759624427"
+    # file_name = "1759624943"
+    # file_name = "1759625244"
+    # file_name = "1759625320"
+
+    # file_name = "1759674999"
+    # file_name = "1759675114"
+    # file_name = "1759675206"
+    file_name = "1759675296"
+
     plot_inversion(file_name)
