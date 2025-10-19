@@ -28,8 +28,16 @@ def plot_inversion(file_name):
     input_ds.close()
     results_ds.close()
 
-    plot_results(input_ds, results_ds, out_filename=file_name, 
+    # plot_results(input_ds, results_ds, out_filename=file_name, 
         # plot_prob_model=True,
+    # )
+    resulting_model_histogram(
+        input_ds,
+        results_ds,
+        n_bins=200,
+        save=True,
+        plot_prob_model=True,
+        plot_true_model=False,
     )
 
 
@@ -49,7 +57,7 @@ if __name__ == "__main__":
 
     # file_name = "1759674999"
     # file_name = "1759675114"
-    # file_name = "1759675206"
-    file_name = "1759675296"
+    file_name = "1759675206"
+    # file_name = "1759675296"
 
     plot_inversion(file_name)
