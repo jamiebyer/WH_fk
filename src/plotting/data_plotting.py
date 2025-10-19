@@ -6,6 +6,14 @@ from obspy.signal.array_analysis import (
     array_transff_wavenumber,
     array_transff_freqslowness,
 )
+import geopandas as gpd
+import contextily as cx
+
+import cartopy.crs as ccrs
+from cartopy.io.img_tiles import GoogleTiles
+import cartopy.io.img_tiles as cimgt
+import cartopy.feature as cf
+from mpl_toolkits.basemap import Basemap
 
 from fk_processing.dispersion_curves import compute_dispersion_curve
 from matplotlib.colors import LogNorm
@@ -16,6 +24,177 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from fk_processing.dispersion_curves import read_max_file, read_txt_file
+
+
+# MAPS
+
+
+def read_yukon_datasets(data_name, suffix=""):
+    dir_path = "./data/geology/" + data_name
+
+    gdb_file = gpd.read_file(
+        dir_path + ".fgdb/" + data_name + suffix + ".gdb", driver="OpenFileGDB"
+    )
+
+    shp_file = gpd.read_file(
+        dir_path + ".shp/" + data_name + suffix + ".shp", driver="ESRI Shapefile"
+    )
+
+    kml_file = gpd.read_file(
+        dir_path + ".kmz/" + data_name + suffix + ".kmz", driver="libkml"
+    )
+
+    return gdb_file, shp_file, kml_file
+
+
+def plot_site_maps():
+    """
+    - map of Yukon with important faults, with plates labelled, mag >3 earthquakes,
+    (obspy) southern Yukon with important places (Whitehorse) labelled
+    - map of site locations, map of greater Whitehorse
+    """
+    _, faults_shp, _ = read_yukon_datasets(data_name="Faults")
+    _, place_names_shp, _ = read_yukon_datasets(data_name="Yukon_Place_Names")
+
+    WH01_path = "./data/WH01/txt_files/WH01_loc_corrected.txt"
+    WH02_path = "./data/WH02/txt_files/WH02_loc_corrected.txt"
+    WH01_site = pd.read_csv(WH01_path)
+    WH02_site = pd.read_csv(WH02_path)
+
+    # plotting
+    proj = ccrs.AlbersEqualArea(
+        central_longitude=-135.076167,
+        central_latitude=60.729549,
+        false_easting=0.0,
+        false_northing=0.0,
+        standard_parallels=(50, 70.0),
+        globe=None,
+    )
+
+    # fig = plt.figure(figsize=(10, 10))
+    # fig, ax = plt.subplots(figsize=(10, 10))
+    # ax = fig.add_subplot(projection=proj)
+    """
+    cx.add_basemap(
+        ax,
+        source=cx.providers.OpenStreetMap.Mapnik,
+        # source=cx.providers.CartoDB.Positron,
+        zoom=19,
+    )
+    """
+
+    bmap = Basemap(
+        projection="aea",
+        lon_0=-135,
+        lat_0=60.75,
+        width=5000000,
+        height=5000000,
+        resolution="h",
+    )
+
+    # gdb_file = gdb_file.to_crs("EPSG:4326")
+    shp_file = place_names_shp.to_crs(bmap.srs)
+    # shp_file = place_names_shp.to_crs("EPSG:4326")
+
+    # gdf.to_crs(bmap.srs)
+
+    # clip data
+
+    from shapely.geometry import box
+
+    polygon = box(-136.5, 60.5, -133.5, 61.0)
+    shp_file_clipped = shp_file.clip(polygon)
+
+    # gdb_file.plot()
+    # gdf.to_crs(bmap.srs).plot(ax=ax, color='red')
+    # shp_file_clipped.plot(ax=ax)
+    # shp_file.plot()
+
+    # bmap = Basemap(projection='moll', lon_0=-0, lat_0=-0, resolution='c')
+    # projection='aea': Albers Equal Area
+
+    bmap.drawrivers()
+
+    # bmap.drawcoastlines()
+    # bmap.drawcountries()
+    # bmap.drawparallels(np.arange(60, 62, 0.5), labels=[1, 0, 0, 0], fontsize=10)
+    # bmap.drawmeridians(np.arange(-136, -133, 0.5), labels=[0, 0, 0, 1], fontsize=10)
+
+    for i, row in shp_file_clipped.iterrows():
+        if row["NAME"] in [
+            "Takhini Lake",
+            "Teslin Mountain",
+            "Teslin Crossing",
+            "Fish Creek",
+            "Fish Lake",
+            "McIntyre, Mount",
+            "Fish Creek",
+            "Louise Lake",
+            "Whitehorse Rapids",
+            "Whitehorse",
+            "Takhini",
+            "Haeckel Hill",
+            "Takhini River",
+            "Takini",
+            "Takhini Hotspring",
+            "McIntyre Creek",
+            "Teslin River",
+        ]:
+            x, y = bmap(row["LONGITUDE"], row["LATITUDE"])
+            plt.scatter(
+                # row["LONGITUDE"],
+                # row["LATITUDE"],
+                x,
+                y,
+                transform=ccrs.AlbersEqualArea(),
+                c="blue",
+            )
+            plt.text(
+                # row["LONGITUDE"],
+                # row["LATITUDE"],
+                x,
+                y,
+                row["NAME"],
+                transform=ccrs.AlbersEqualArea(),
+            )
+
+    """
+    ind = (WH01_site["X(m)"] == 0.0) & (WH01_site["Y(m)"] == 0.0)
+    x, y = bmap(WH01_site["Lon"][ind], WH01_site["Lat"][ind])
+    plt.scatter(
+        # WH01_site["Lon"][ind],
+        # WH01_site["Lat"][ind],
+        x,
+        y,
+        transform=ccrs.AlbersEqualArea(),
+        c="black",
+    )
+
+    ind = (WH02_site["X(m)"] == 0.0) & (WH02_site["Y(m)"] == 0.0)
+    x, y = bmap(WH02_site["Lon"][ind], WH02_site["Lat"][ind])
+    plt.scatter(
+        # WH02_site["Lon"][ind],
+        # WH02_site["Lat"][ind],
+        x,
+        y,
+        transform=ccrs.AlbersEqualArea(),
+        c="black",
+    )
+    """
+    x_min, y_min = bmap(-136.5, 60.5)
+    x_max, y_max = bmap(-133.5, 61.0)
+    plt.xlim([x_min, x_max])
+    plt.ylim([y_min, y_max])
+
+    # plt.show()
+    plt.savefig("./figures/sites.png")
+
+
+# AMBIENT NOISE
+
+
+def plot_ambient_noise():
+    pass
 
 
 # ARRAY RESPONSE
@@ -177,13 +356,13 @@ def plot_array_response():
 # DISPERSION CURVES
 
 
-def plot_computed_dispersion_curve(max_path, f_range):
+def plot_computed_dispersion_curve(max_path, f_range, err_thresh):
     """
     Plot dispersion curve from max file.
     """
     df_max = read_max_file(max_path)
     freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
-        df_max
+        df_max, err_thresh
     )
 
     inds = np.full(len(freqs), False)
