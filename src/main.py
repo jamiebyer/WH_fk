@@ -4,11 +4,7 @@ from fk_processing.dispersion_curves import *
 
 import asyncio
 import numpy as np
-<<<<<<< HEAD
 
-# from tests.test_inversion import *
-=======
->>>>>>> de5a55030ce5b918b87b781bff0ebeea5a630877
 
 import sys
 
@@ -22,7 +18,7 @@ import numpy as np
 from inversion.model_params import DispersionCurveParams
 from inversion.inversion import Inversion
 
-#from plotting.plot_dispersion_curve import *
+# from plotting.plot_dispersion_curve import *
 
 from fk_processing.dispersion_curves import compute_dispersion_curve
 
@@ -30,7 +26,6 @@ import xarray as xr
 
 
 np.random.seed(0)
-
 
 
 def setup_test_model(n_layers):
@@ -65,7 +60,9 @@ def setup_test_model(n_layers):
         # set up data and inversion params
         bounds = {
             "depth": np.array([[0.005, 0.010], [0.005, 0.150], [0.005, 0.250]]),  # km
-            "vel_s": np.array([[0.100, 0.500], [0.200, 1.000], [0.200, 2.000], [1.500, 4.000]]),  # km/s
+            "vel_s": np.array(
+                [[0.100, 0.500], [0.200, 1.000], [0.200, 2.000], [1.500, 4.000]]
+            ),  # km/s
         }
     elif n_layers == 4:
         proposal_width = {
@@ -75,8 +72,18 @@ def setup_test_model(n_layers):
 
         # set up data and inversion params
         bounds = {
-            "depth": np.array([[0.005, 0.100], [0.005, 0.150], [0.005, 0.250], [0.100, 0.400]]),  # km
-            "vel_s": np.array([[0.100, 0.500], [0.200, 1.000], [0.200, 2.000], [1.500, 4.000], [1.500, 4.000]]),  # km/s
+            "depth": np.array(
+                [[0.005, 0.100], [0.005, 0.150], [0.005, 0.250], [0.100, 0.400]]
+            ),  # km
+            "vel_s": np.array(
+                [
+                    [0.100, 0.500],
+                    [0.200, 1.000],
+                    [0.200, 2.000],
+                    [1.500, 4.000],
+                    [1.500, 4.000],
+                ]
+            ),  # km/s
         }
 
     model_params_kwargs = {
@@ -132,7 +139,7 @@ def basic_inversion(n_layers, sample_prior, set_starting_model, out_filename="")
 
     # model_kwargs = {"sigma_data": stds[inds]}  # sigma_data * data.data_obs}
     model_kwargs = {"sigma_data": stds}  # sigma_data * data.data_obs}
-    
+
     # run inversion
     inversion = Inversion(
         data,
@@ -168,30 +175,88 @@ def run_inversion():
 
 
 if __name__ == "__main__":
-    
-    max_path = "./data/WH01/max_files/WH01_fine.max"
+    WH02_freqs = [
+        6.65677505,
+        6.83950693,
+        7.02725489,
+        7.22015663,
+        7.41835362,
+        7.62199122,
+        7.83121878,
+        8.04618974,
+        8.26706176,
+        8.49399683,
+        8.72716139,
+        8.96672643,
+        9.21286765,
+        9.46576558,
+        9.72560569,
+        9.99257853,
+        10.26687992,
+        10.54871103,
+        10.83827854,
+        11.13579483,
+        11.44147809,
+        11.75555251,
+        12.07824844,
+        12.40980253,
+        12.75045796,
+    ]
+    WH02_vels = [
+        330,
+        280,
+        290,
+        280,
+        280,
+        300,
+        280,
+        300,
+        280,
+        280,
+        290,
+        260,
+        250,
+        260,
+        250,
+        250,
+        240,
+        250,
+        250,
+        240,
+        260,
+        250,
+        230,
+        230,
+        230,
+    ]
+
+    # max_path = "./data/WH01/max_files/WH01_fine.max"
     # txt_path = "./data/WH01/txt_files/WH01_curve_fine.txt"
 
-    # max_path = "./data/WH02/max_files/WH02_fine.max"
+    max_path = "./data/WH02/max_files/WH02_fine.max"
     # txt_path = "./data/WH02/txt_files/WH02_curve_fine.txt"
 
     # max_path = "./capon-importedsignals.max"
 
     # plot full curve
     # plot_computed_dispersion_curve(max_path, f_range=[[2.2, 7]], err_thresh=6)  # WH01
-    # plot_computed_dispersion_curve(max_path, f_range=[[2, 3.7], [9.8, 10000]])  # WH02
+    plot_computed_dispersion_curve(
+        max_path,
+        f_range=[[2, 3.7], [6.5, 13]],
+        freq_outliers=WH02_freqs,
+        vel_outliers=WH02_vels,
+    )  # WH02
 
     # plot individual frequencies
     # plot_dispersion_curve_frequency(
     #     max_path, f_range=[[2.2, 7]], freq=2.2
     # )
     # plot_dispersion_curve_frequency(
-    #     max_path, f_range=[[2, 3.7], [9.8, 10000]], freq=10.5
+    #    max_path, f_range=[[2, 3.7], [9.8, 13]], freq=9.5
     # )
 
     # compare_dispersion_curves(max_path, txt_path, f_min=2.2, f_max=7.5)
 
     # plot_site_maps()
 
-    run_inversion()
-
+    # run_inversion()

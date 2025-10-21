@@ -116,7 +116,7 @@ def read_max_file(max_file):
     return df
 
 
-def compute_dispersion_curve(df, err_thresh):
+def compute_dispersion_curve(df, err_thresh=None, freq_outliers=[], vel_outliers=[]):
     """
     compute dispersion curve from .max file df.
     get median and std for each frequency.
@@ -135,16 +135,23 @@ def compute_dispersion_curve(df, err_thresh):
     # for each frequency, save the median velocity, and
     # compute the standard deviation
     for f in freqs_curve:
-        vel_med = np.median(vels_grid[freqs_grid == f])
-        vel_mean = np.mean(vels_grid[freqs_grid == f])
-        std = np.std(vels_grid[freqs_grid == f])
+        vels = vels_grid[freqs_grid == f]
+        ind = np.argmin(np.abs(freq_outliers - f))
+
+        if np.abs(freq_outliers[ind] - f) < 0.01:
+            vels = vels[vels < vel_outliers[ind]]
+
+        vel_med = np.median(vels)
+        vel_mean = np.mean(vels)
+        std = np.std(vels)
         vel_meds_curve.append(vel_med)
         vel_means_curve.append(vel_mean)
         stds_curve.append(std)
 
     # error threshold
-    ind = np.argmin(np.abs(freqs_curve - err_thresh))
-    stds_curve[ind:] = (len(stds_curve) - ind) * [stds_curve[ind]]
+    if err_thresh is not None:
+        ind = np.argmin(np.abs(freqs_curve - err_thresh))
+        stds_curve[ind:] = (len(stds_curve) - ind) * [stds_curve[ind]]
 
     return (
         freqs_grid,
