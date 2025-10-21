@@ -187,13 +187,18 @@ def plot_array_response():
 # DISPERSION CURVES
 
 
-def plot_computed_dispersion_curve(max_path, f_range, err_thresh):
+def plot_computed_dispersion_curve(
+    max_path, f_range, err_thresh=None, freq_outliers=[], vel_outliers=[]
+):
     """
     Plot dispersion curve from max file.
     """
     df_max = read_max_file(max_path)
     freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
-        df_max, err_thresh
+        df_max,
+        err_thresh=err_thresh,
+        freq_outliers=freq_outliers,
+        vel_outliers=vel_outliers,
     )
 
     inds = np.full(len(freqs), False)
@@ -440,6 +445,7 @@ def plot_dispersion_curve_frequency(max_path, f_range, freq):
     """
     Plot dispersion curve from max file.
     """
+    plt.clf()
     df_max = read_max_file(max_path)
     freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
         df_max
@@ -485,3 +491,4 @@ def plot_dispersion_curve_frequency(max_path, f_range, freq):
     )
     plt.savefig(path)
     # plt.show()
+    plt.close()

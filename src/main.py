@@ -4,7 +4,6 @@ from fk_processing.dispersion_curves import *
 
 import asyncio
 import numpy as np
-# from tests.test_inversion import *
 
 import sys
 
@@ -18,7 +17,7 @@ import numpy as np
 from inversion.model_params import DispersionCurveParams
 from inversion.inversion import Inversion
 
-#from plotting.plot_dispersion_curve import *
+# from plotting.plot_dispersion_curve import *
 
 from fk_processing.dispersion_curves import compute_dispersion_curve
 
@@ -26,7 +25,6 @@ import xarray as xr
 
 
 np.random.seed(0)
-
 
 def setup_data(site):
     if site == "WH01":
@@ -100,14 +98,12 @@ def setup_data(site):
     _, _, freqs, phase_vels, _, stds = compute_dispersion_curve(
         df_max, err_thresh=err_thresh, freq_outliers=freq_outliers, vel_outliers=vel_outliers
     )
-
+    
     inds = np.full(len(freqs), False)
     for f_min, f_max in f_range:
         # save the frequencies between frequency bounds
         inds = inds | (freqs >= f_min) & (freqs <= f_max)
 
-    print(freqs)
-    print(phase_vels)
     periods = np.flip(1 / freqs)
     phase_vels = np.flip(phase_vels / 1000)
     stds = np.flip(stds / 1000)
@@ -117,7 +113,7 @@ def setup_data(site):
 
 
 def setup_model(n_layers, site):
-
+    # set up data and inversion params    
     if site == "WH01":
         if n_layers == 1:
             proposal_width = {
@@ -244,7 +240,9 @@ def basic_inversion(n_layers, sample_prior, set_starting_model, out_filename="",
     }
 
     model_kwargs = {"sigma_data": data.sigma_data}
-    
+
+    # model_kwargs = {"sigma_data": stds}  # sigma_data * data.data_obs}
+
     # run inversion
     inversion = Inversion(
         data,
@@ -281,8 +279,8 @@ def run_inversion():
         rotate_params=rotate,
     )
 
-
-if __name__ == "__main__":
+def plot_dispersion_curve():
+    
     # max_path = "./data/WH01/max_files/WH01_fine.max"
     # txt_path = "./data/WH01/txt_files/WH01_curve_fine.txt"
 
@@ -301,17 +299,20 @@ if __name__ == "__main__":
         vel_outliers=WH02_vels,
     )  # WH02
     """
+
     # plot individual frequencies
     # plot_dispersion_curve_frequency(
     #     max_path, f_range=[[2.2, 7]], freq=2.2
     # )
     # plot_dispersion_curve_frequency(
-    #     max_path, f_range=[[2, 3.7], [9.8, 10000]], freq=10.5
+    #    max_path, f_range=[[2, 3.7], [9.8, 13]], freq=9.5
     # )
 
     # compare_dispersion_curves(max_path, txt_path, f_min=2.2, f_max=7.5)
 
     # plot_site_maps()
+    pass
 
+
+if __name__ == "__main__":
     run_inversion()
-
