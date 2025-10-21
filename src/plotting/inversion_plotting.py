@@ -28,16 +28,11 @@ def plot_inversion(file_name):
     input_ds.close()
     results_ds.close()
 
-    # plot_results(input_ds, results_ds, out_filename=file_name, 
-        # plot_prob_model=True,
-    # )
-    resulting_model_histogram(
+    plot_results(
         input_ds,
         results_ds,
-        n_bins=200,
-        save=True,
-        plot_prob_model=True,
-        plot_true_model=False,
+        out_filename=file_name,
+        # plot_prob_model=True,
     )
 
 
@@ -48,16 +43,9 @@ if __name__ == "__main__":
     snakeviz profiling_stats.prof
     """
 
-    # run_inversion()
-
-    # file_name = "1759624427"
-    # file_name = "1759624943"
-    # file_name = "1759625244"
-    # file_name = "1759625320"
-
-    # file_name = "1759674999"
-    # file_name = "1759675114"
-    file_name = "1759675206"
-    # file_name = "1759675296"
+    # file_name = "1761018802"
+    # file_name = "1761018940"
+    # file_name = "1761019060"
+    file_name = "1761019167"
 
     plot_inversion(file_name)

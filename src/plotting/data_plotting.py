@@ -18,6 +18,16 @@ import matplotlib.pyplot as plt
 from fk_processing.dispersion_curves import read_max_file, read_txt_file
 
 
+# MAPS
+
+
+# AMBIENT NOISE
+
+
+def plot_ambient_noise():
+    pass
+
+
 # ARRAY RESPONSE
 
 
@@ -177,17 +187,28 @@ def plot_array_response():
 # DISPERSION CURVES
 
 
-def plot_computed_dispersion_curve(max_file, f_min, f_max):
+def plot_computed_dispersion_curve(max_path, f_range, err_thresh):
     """
     Plot dispersion curve from max file.
     """
-    freqs_grid, vels_grid, freqs, vels, stds = compute_dispersion_curve(
-        max_file, f_min, f_max
+    df_max = read_max_file(max_path)
+    freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
+        df_max, err_thresh
     )
 
-    freq_bins = np.logspace(np.log10(np.min(freqs)), np.log10(np.max(freqs)), 75)
-    vel_bins = np.logspace(np.log10(np.min(vels)), np.log10(np.max(vels)), 100)
+    inds = np.full(len(freqs), False)
+    for f_min, f_max in f_range:
+        # save the frequencies between frequency bounds
+        inds = inds | (freqs >= f_min) & (freqs <= f_max)
 
+    # freq_bins = np.logspace(np.log10(np.min(freqs)), np.log10(np.max(freqs)), 75)
+    # vel_bins = np.logspace(np.log10(np.min(vel_meds)), np.log10(np.max(vel_meds)), 100)
+    freq_bins = np.logspace(
+        np.log10(np.min(freqs)), np.log10(np.max(freqs)), len(freqs)
+    )
+    vel_bins = np.logspace(np.log10(np.min(vel_meds)), np.log10(np.max(vel_meds)), 75)
+
+    plt.figure(figsize=(10, 6))
     # plot frequency and velocity 2D histogram
     plt.hist2d(
         freqs_grid,
@@ -203,8 +224,6 @@ def plot_computed_dispersion_curve(max_file, f_min, f_max):
     plt.xscale("log")
     plt.yscale("log")
 
-    plt.ylim([190, 2100])
-
     plt.xlabel("frequency (Hz)")
     plt.ylabel("velocity (m/s)")
 
@@ -214,20 +233,26 @@ def plot_computed_dispersion_curve(max_file, f_min, f_max):
     # plt.plot(freqs_curve, vels_curve)
 
     plt.errorbar(
-        freqs,
-        vels,
-        stds,
+        freqs[inds],
+        vel_meds[inds],
+        stds[inds],
+        marker="o",
         c="black",
-        alpha=0.5,
         elinewidth=1,
         barsabove=True,
     )
 
     plt.grid(True)
 
-    plt.title("computed dispersion curve")
     plt.tight_layout()
-    plt.show()
+
+    path = (
+        "./figures/dispersion_curves/"
+        + max_path.split("/")[-1].split("_fine.")[0]
+        + "_curve.png"
+    )
+    plt.savefig(path)
+    # plt.show()
 
 
 def plot_geopsy_dispersion_curve(max_path, txt_path):
@@ -285,4 +310,178 @@ def plot_geopsy_dispersion_curve(max_path, txt_path):
 
     plt.title("geopsy dispersion curve")
 
-    plt.show()
+    path = (
+        "./figures/dispersion_curves/"
+        + max_path.split("/")[-1].split("_fine.")[0]
+        + "_curve.png"
+    )
+    plt.savefig(path)
+
+
+def compare_dispersion_curves(max_path, txt_path, f_min, f_max):
+    plt.figure(figsize=(10, 6))
+
+    df_max = read_max_file(max_path)
+
+    freqs_grid, vels_grid, freqs, vel_meds, vel_means, stds, inds = (
+        compute_dispersion_curve(df_max, f_min, f_max)
+    )
+
+    freq_bins = np.logspace(np.log10(np.min(freqs)), np.log10(np.max(freqs)), 75)
+    vel_bins = np.logspace(np.log10(np.min(vel_meds)), np.log10(np.max(vel_meds)), 100)
+
+    # plt.subplot(1, 2, 1)
+    # plot frequency and velocity 2D histogram
+    plt.hist2d(
+        freqs_grid,
+        vels_grid,
+        bins=[
+            freq_bins,
+            vel_bins,
+        ],
+        cmap="viridis",
+        norm=LogNorm(),
+        zorder=1,
+    )
+
+    plt.xscale("log")
+    plt.yscale("log")
+
+    plt.ylim([190, 2010])
+    plt.xlim([2.0, 8.0])
+
+    plt.xlabel("frequency (Hz)")
+    plt.ylabel("velocity (m/s)")
+
+    plt.colorbar(label="counts")
+
+    # plot dispersion curve with errors
+
+    plt.errorbar(
+        freqs[inds],
+        vel_means[inds],
+        stds[inds],
+        # marker="o",
+        # linestyle=None,
+        label="mean",
+        c="red",
+        elinewidth=3,
+        barsabove=True,
+        fmt="o",
+        ms=5,
+        zorder=2,
+    )
+
+    plt.scatter(
+        freqs[inds],
+        vel_meds[inds],
+        # marker="o",
+        # linestyle="-",
+        label="median",
+        c="yellow",
+        s=50,
+        zorder=3,
+    )
+
+    # txt file
+    df_txt = read_txt_file(txt_path)
+
+    plt.scatter(
+        df_txt["frequency"],
+        1 / df_txt["slowness"],
+        # marker="o",
+        # linestyle="-",
+        label="geopsy",
+        c="orange",
+        s=50,
+        zorder=3,
+    )
+    """
+    plt.errorbar(
+        df_txt["frequency"],
+        1 / df_txt["slowness"],
+        1 / (df_txt["percent_error"] * df_txt["slowness"]),
+        #c="black",
+        alpha=0.5,
+    )
+    """
+
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    """
+    plt.subplot(1, 2, 2)
+    plt.scatter(
+        df_txt["frequency"],
+        (1 / df_txt["slowness"]) - vel_means[inds],
+        # marker="o",
+        # linestyle="-",
+        label="geopsy - mean",
+    )
+    plt.scatter(
+        df_txt["frequency"],
+        (1 / df_txt["slowness"]) - vel_meds[inds],
+        # marker="o",
+        # linestyle="-",
+        label="geopsy - median",
+    )
+    plt.axhline(0)
+    plt.legend()
+    
+    plt.tight_layout()
+    """
+
+    path = "./figures/compare-field-" + max_path.split("/")[-1].split(".")[0] + ".png"
+    plt.savefig(path)
+
+
+def plot_dispersion_curve_frequency(max_path, f_range, freq):
+    """
+    Plot dispersion curve from max file.
+    """
+    df_max = read_max_file(max_path)
+    freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
+        df_max
+    )
+
+    inds = np.full(len(freqs), True)
+    for f_min, f_max in f_range:
+        # save the frequencies between frequency bounds
+        inds = inds & (freqs >= f_min) & (freqs <= f_max)
+
+    plt.figure(figsize=(6, 4))
+
+    freq_diff = np.abs(freqs - freq)
+    ind = np.where(freq_diff == freq_diff.min())
+    freq_diff = np.abs(freqs_grid - freq)
+    inds = np.where(freq_diff == freq_diff.min())
+
+    plt.hist(vels_grid[inds[0]], bins=40)
+
+    # plot frequency and velocity 2D histogram
+    # plt.xscale("log")
+
+    # plt.ylim([190, 2010])
+
+    plt.xlabel("velocity (m/s)")
+    plt.ylabel("counts")
+
+    plt.axvline(vel_meds[ind], c="black")
+    plt.axvline(vel_meds[ind] - stds[ind], c="red")
+    plt.axvline(vel_meds[ind] + stds[ind], c="red")
+
+    plt.title("freq: " + str(freq) + " Hz")
+    plt.grid(True)
+
+    plt.tight_layout()
+
+    path = (
+        "./figures/dispersion_curves/"
+        + max_path.split("/")[-1].split("_fine.")[0]
+        + "_freq "
+        + str(freq)
+        + ".png"
+    )
+    plt.savefig(path)
+    # plt.show()
