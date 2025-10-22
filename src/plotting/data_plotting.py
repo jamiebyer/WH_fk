@@ -24,6 +24,33 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from fk_processing.dispersion_curves import read_max_file, read_txt_file
+from obspy import read
+
+# DATA
+
+
+def ambient_noise_data(site):
+    stations = [
+        "0240",
+        "0252",
+        "0253",
+        "0424",
+        "0526",
+        "TP01",
+        "TP02",
+        "TP03",
+        "TP04",
+        "TP05",
+        "TP06",
+        "TP07",
+        "TP09",
+        "TP10",
+    ]
+
+    dir_path = "./data/" + site + "/mseeds/"
+    for s in stations:
+        st = read(dir_path + s + "_" + site + ".mseed")
+        print(st[0].stats)
 
 
 # MAPS
