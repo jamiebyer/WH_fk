@@ -12,7 +12,7 @@ import sys
 
 sys.path.append("../mcmc/src/")
 
-# from plotting.plot_dispersion_curve import *
+from plotting.plot_dispersion_curve import *
 
 # import statsmodels.api as sm
 
@@ -43,16 +43,9 @@ if __name__ == "__main__":
     snakeviz profiling_stats.prof
     """
 
-    # run_inversion()
-
-    # file_name = "1759624427"
-    # file_name = "1759624943"
-    # file_name = "1759625244"
-    # file_name = "1759625320"
-
-    # file_name = "1759674999"
-    # file_name = "1759675114"
-    # file_name = "1759675206"
-    file_name = "1759675296"
+    # file_name = "1761018802"
+    # file_name = "1761018940"
+    # file_name = "1761019060"
+    file_name = "1761019167"
 
     plot_inversion(file_name)

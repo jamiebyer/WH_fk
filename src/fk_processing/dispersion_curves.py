@@ -136,10 +136,11 @@ def compute_dispersion_curve(df, err_thresh=None, freq_outliers=[], vel_outliers
     # compute the standard deviation
     for f in freqs_curve:
         vels = vels_grid[freqs_grid == f]
-        ind = np.argmin(np.abs(freq_outliers - f))
+        if len(freq_outliers) > 0:
+            ind = np.argmin(np.abs(freq_outliers - f))
 
-        if np.abs(freq_outliers[ind] - f) < 0.01:
-            vels = vels[vels < vel_outliers[ind]]
+            if np.abs(freq_outliers[ind] - f) < 0.01:
+                vels = vels[vels < vel_outliers[ind]]
 
         vel_med = np.median(vels)
         vel_mean = np.mean(vels)
