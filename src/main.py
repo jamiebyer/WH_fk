@@ -108,9 +108,9 @@ def setup_data(site):
         # save the frequencies between frequency bounds
         inds = inds | (freqs >= f_min) & (freqs <= f_max)
 
-    periods = np.flip(1 / freqs)
-    phase_vels = np.flip(phase_vels / 1000)
-    stds = np.flip(stds / 1000)
+    periods = np.flip(1 / freqs[inds])
+    phase_vels = np.flip(phase_vels[inds] / 1000)
+    stds = np.flip(stds[inds] / 1000)
     data = FieldData(periods, phase_vels, stds)
 
     return data
@@ -355,7 +355,7 @@ def plot_dispersion_curve():
 if __name__ == "__main__":
 
     # run_inversion()
-    ambient_noise_data(site="WH01")
+    # ambient_noise_data(site="WH01")
     # ambient_noise_data(site="WH02")
 
     run_inversion()
