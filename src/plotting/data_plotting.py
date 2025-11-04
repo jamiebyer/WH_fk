@@ -7,8 +7,19 @@ from obspy.signal.array_analysis import (
     array_transff_freqslowness,
 )
 
-from fk_processing.dispersion_curves import compute_dispersion_curve
+from matplotlib.gridspec import GridSpec
+
+import matplotlib.image as img
+
+# import sys
+
+# sys.path.append("../src/")
+from fk_processing.dispersion_curves import compute_dispersion_curve, setup_data
 from matplotlib.colors import LogNorm
+
+from matplotlib.ticker import ScalarFormatter
+
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 import pandas as pd
 
@@ -269,6 +280,7 @@ def plot_computed_dispersion_curve(
         vel_meds[inds],
         stds[inds],
         marker="o",
+        markersize=3,
         c="black",
         elinewidth=1,
         barsabove=True,
@@ -519,3 +531,319 @@ def plot_dispersion_curve_frequency(max_path, f_range, freq):
     plt.savefig(path)
     # plt.show()
     plt.close()
+
+
+def plot_paper_dispersion_curves():
+    data_WH01, freqs_grid_WH01, vels_grid_WH01 = setup_data(site="WH01")
+    data_WH02, freqs_grid_WH02, vels_grid_WH02 = setup_data(site="WH02")
+
+    freqs_grid_WH01 = freqs_grid_WH01.values
+    vels_grid_WH01 = vels_grid_WH01.values
+    freqs_grid_WH02 = freqs_grid_WH02.values
+    vels_grid_WH02 = vels_grid_WH02.values
+
+    fig, (ax1, ax2) = plt.subplots(nrows=2, sharex=True, figsize=(6, 8))
+
+    freqs_WH01 = 1 / data_WH01.periods
+    vels_WH01 = data_WH01.data_obs * 1000
+
+    freqs_WH02 = 1 / data_WH02.periods
+    vels_WH02 = data_WH02.data_obs * 1000
+
+    freq_bins_WH01 = np.logspace(
+        np.log10(np.min(freqs_grid_WH01)),
+        np.log10(np.max(freqs_grid_WH01)),
+        len(np.unique(freqs_grid_WH01)),
+    )
+    vel_bins_WH01 = np.logspace(
+        np.log10(np.min(vels_grid_WH01)), np.log10(np.max(vels_grid_WH01)), 75
+    )
+
+    freq_bins_WH02 = np.logspace(
+        np.log10(np.min(freqs_grid_WH02)),
+        np.log10(np.max(freqs_grid_WH02)),
+        len(np.unique(freqs_grid_WH02)),
+    )
+    vel_bins_WH02 = np.logspace(
+        np.log10(np.min(vels_grid_WH02)), np.log10(np.max(vels_grid_WH02)), 75
+    )
+
+    plt.figure(figsize=(30, 10))
+    # """
+    # plot frequency and velocity 2D histogram
+    h1 = ax1.hist2d(
+        freqs_grid_WH01,
+        vels_grid_WH01,
+        bins=[
+            freq_bins_WH01,
+            vel_bins_WH01,
+        ],
+        cmap="coolwarm",
+        norm=LogNorm(),
+    )
+    h2 = ax2.hist2d(
+        freqs_grid_WH02,
+        vels_grid_WH02,
+        bins=[
+            freq_bins_WH02,
+            vel_bins_WH02,
+        ],
+        cmap="coolwarm",
+        norm=LogNorm(),
+    )
+
+    # """
+
+    # fig.colorbar(h1[3], label="counts", cax=ax1)
+    # fig.colorbar(h2[3], label="counts", cax=ax2)
+
+    # fig.colorbar(h1, ax=ax1)
+    # fig.colorbar(h2, ax=ax2)
+
+    # ax2.colorbar(label="counts")
+
+    ax1.errorbar(
+        freqs_WH01,
+        vels_WH01,
+        data_WH01.sigma_data * 1000,
+        c="black",
+        # alpha=0.5,
+        elinewidth=1,
+        capsize=2,
+        ls="none",
+        fmt="o",
+        markersize=2,
+    )
+    ax2.errorbar(
+        freqs_WH02,
+        vels_WH02,
+        data_WH02.sigma_data * 1000,
+        c="black",
+        # alpha=0.5,
+        elinewidth=1,
+        capsize=2,
+        ls="none",
+        fmt="o",
+        markersize=2,
+    )
+
+    ax1.set_xscale("log")
+    ax1.set_yscale("log")
+
+    # ax2.set_xscale("log")
+    ax2.set_yscale("log")
+
+    # ax1.set_xlabel("frequency (Hz)")
+    ax1.set_ylabel("Velocity (m/s)")
+    ax1.grid(True)
+
+    ax2.set_xlabel("Frequency (Hz)")
+    ax2.set_ylabel("Velocity (m/s)")
+
+    # tick marks
+    # major_ticks = np.logspace(0, 1.2, 8)
+    # x_ticks = np.logspace(0, np.log10(15), 6)
+    # minor_ticks = np.arange(0, 101, 5)
+    # y_ticks = np.logspace(np.log10(200), np.log10(2000), 8)
+
+    # x_ticks = [1, 1.72, 2.95, 5.08, 8.73, 15]
+    # y_ticks = [200, 278, 386, 537, 746, 1036, 1439, 2000]
+
+    x_ticks = [1, 2, 3, 4, 5, 7, 10, 15]
+    y_ticks = [200, 300, 400, 600, 1000, 2000]
+
+    """
+    [ 1.11440654, 14.59924331]
+    [ 201.02538911, 1999.34424147]
+    [ 1., 14.59924331]
+    [ 201.02734988, 1998.29528439]
+    """
+    ax2.set_xticks(x_ticks)
+    # ax2.set_xticks(minor_ticks, minor=True)
+
+    ax1.set_yticks(y_ticks)
+    # ax1.set_yticks(minor_ticks, minor=True)
+    ax2.set_yticks(y_ticks)
+    # ax2.set_yticks(minor_ticks, minor=True)
+
+    # ax2.grid(True, which="both")
+    ax1.grid(which="major", alpha=0.75)
+    ax1.grid(which="minor", alpha=0.5)
+
+    ax2.grid(which="major", alpha=0.75)
+    ax2.grid(which="minor", alpha=0.5)
+
+    ax1.text(1.03, 1600, "A", fontsize=20, weight="bold")
+    ax2.text(1.03, 1600, "B", fontsize=20, weight="bold")
+
+    for axis in [ax1.xaxis, ax1.yaxis, ax2.xaxis, ax2.yaxis]:
+        formatter = ScalarFormatter()
+        formatter.set_scientific(False)
+        axis.set_major_formatter(formatter)
+
+    plt.tight_layout()
+
+    cbaxes = inset_axes(ax2, width="5%", height="40%", loc=1)
+    cbar = fig.colorbar(h2[3], ax=[ax1, ax2], cax=cbaxes)
+    # plt.colorbar(cax=cbaxes, ticks=[0.0, 1], orientation="horizontal")
+    cbar.set_label("Counts", labelpad=-55)
+    cbar.ax.set_yticks([1, 10, 100])
+    cbar.ax.set_yticklabels([1, 10, 100])
+
+    path = "./figures/final/dispersion_curves.png"
+    fig.savefig(path, dpi=600)
+
+
+def plot_full_results(input_ds, results_ds, n_bins=100, save=False, out_filename=""):
+    """
+    plot results for paper.
+    subplots
+    - site location
+    - data pred vs. data obs
+    - depth profile (near surface)
+    """
+
+    # cut results by step
+    results_ds = results_ds.copy().isel(
+        step=slice(input_ds.attrs["n_burn"], len(results_ds["step"]))
+    )
+
+    freqs = 1 / input_ds["period"]
+
+    yerr = input_ds.attrs["sigma_data"]
+
+    # get data prediction
+    pred_ind = np.argmax(results_ds["logL"].values)
+
+    # estimated error
+    # *** depends if it's a percent error or not
+    # yerr = input_ds.attrs["sigma_data"] * results_ds["data_prob"]
+
+    # flatten data_pred, repeat period
+    hist_freqs = np.repeat(freqs, results_ds["data_pred"].shape[1])
+    data_preds = results_ds["data_pred"].values.flatten()
+
+    # read in site locations as png?
+
+    # Create a figure
+    fig = plt.figure(figsize=(10, 6))
+
+    # Define a GridSpec layout
+    gs = GridSpec(2, 2, figure=fig)
+
+    # Add subplots with custom spans
+    ax1 = fig.add_subplot(gs[0, 0])  # site location
+    ax2 = fig.add_subplot(gs[1, 0])  # data pred vs. obs
+    ax3 = fig.add_subplot(gs[:, 1])  # depth profile
+
+    # PLOT SITE LOCATION
+    # reading png image file
+    path = (
+        "/home/jbyer/Documents/uoc/repos/mapping/Get_Site_Locations_Jamie/WH01_map.png"
+    )
+    # path = "/home/jbyer/Documents/uoc/repos/mapping/Get_Site_Locations_Jamie/WH02_map.png"
+    im = img.imread(path)
+    # show image
+    ax1.imshow(im)
+    ax1.axis("off")
+
+    # PLOT DATA
+    ax2.hist2d(hist_freqs, data_preds, bins=n_bins, cmin=1, norm="log")
+    # fig.colorbar(im, ax=ax, label="count")
+    ax2.scatter(
+        freqs, results_ds["data_pred"].isel(step=pred_ind), zorder=3, label="data_pred"
+    )
+    ax2.errorbar(
+        freqs,
+        input_ds["data_obs"],
+        yerr,
+        fmt="o",
+        zorder=3,
+        c="orange",
+        label="data_obs",
+    )
+
+    ax2.set_xscale("log")
+    ax2.set_xlabel("frequency (Hz)")
+    ax2.set_ylabel("velocity (km/s)")
+
+    # ax2.legend()
+
+    # PLOT DEPTH PROFILE
+    # use results_ds to get model params
+    model_params = results_ds["model_params"].values
+    # define hist bins between bounds
+    # use param inds to get depth, and use min and max of all depth bounds
+    depth_bounds = input_ds["param_bounds"][input_ds["depth_inds"]]
+    depth_bins = (
+        np.linspace(
+            np.min(depth_bounds[:, 0]),
+            np.max(depth_bounds[:, 1]),
+            n_bins,
+        )
+        * 1000
+    )  # unit conversion
+    vel_s_bounds = input_ds["param_bounds"][input_ds["vel_s_inds"]]
+    vel_s_bins = np.linspace(
+        np.min(vel_s_bounds[:, 0]), np.max(vel_s_bounds[:, 1]), n_bins
+    )
+    counts = np.zeros((n_bins, n_bins))
+
+    # loop over every resulting model
+    # add vel_s 1 to hist bins above depth
+    # add vel_s 2 to hist bins below depth
+
+    depth_inds = input_ds["depth_inds"]
+    vel_s_inds = input_ds["vel_s_inds"]
+
+    n_steps = len(results_ds["step"])
+
+    depth = model_params[depth_inds] * 1000  # unit conversion to m
+    depth_plotting = np.concatenate(
+        (
+            np.zeros((1, n_steps)),
+            depth,
+            np.full((1, n_steps), np.max(depth_bounds[:, 1])) * 1000,  # unit conversion
+        ),
+        axis=0,
+    )
+    vel_s = model_params[vel_s_inds]
+
+    # for each layer
+    # for each sample / step
+    for layer_ind in range(input_ds.attrs["n_layers"] + 1):
+        for step_ind in range(n_steps):
+            # find bin index closest to layer depth
+            depth_upper_inds = np.argmin(
+                abs(depth_bins - depth_plotting[layer_ind, step_ind])
+            )
+            depth_lower_inds = np.argmin(
+                abs(depth_bins - depth_plotting[layer_ind + 1, step_ind])
+            )
+            # find bin index closest to layer vel_s
+            vel_s_close_inds = np.argmin(abs(vel_s_bins - vel_s[layer_ind, step_ind]))
+
+            counts[depth_upper_inds:depth_lower_inds, vel_s_close_inds] += 1
+
+    print(counts)
+    h = ax3.imshow(
+        counts,
+        norm=LogNorm(),
+        extent=[vel_s_bins[0], vel_s_bins[-1], depth_bins[-1], depth_bins[0]],
+        aspect="auto",
+        interpolation="none",
+    )
+    ax3.set_ylabel("depth (m)")
+
+    ax3.set_xlim(ax1.get_xlim()[::-1])
+    plt.gca().invert_yaxis()
+
+    if save:
+        plt.savefig("figures/" + out_filename + "/results-" + out_filename + ".png")
+    else:
+        plt.show()
+
+
+if __name__ == "__main__":
+
+    plot_paper_dispersion_curves()
