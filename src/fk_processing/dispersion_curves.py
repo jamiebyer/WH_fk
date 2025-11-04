@@ -9,6 +9,8 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 
+from inversion.data import SyntheticData, FieldData
+
 
 def run_geopsy():
     geopsy_fk_path = "./geopsypack-src-3.5.2/bin/geopsy-fk"
@@ -162,6 +164,95 @@ def compute_dispersion_curve(df, err_thresh=None, freq_outliers=[], vel_outliers
         np.array(vel_means_curve),
         np.array(stds_curve),
     )
+
+
+def setup_data(site):
+    if site == "WH01":
+        max_path = "./data/WH01/max_files/WH01_fine.max"
+        f_range = [[2.2, 7]]
+        err_thresh = 6
+        freq_outliers = []
+        vel_outliers = []
+    elif site == "WH02":
+        max_path = "./data/WH02/max_files/WH02_fine.max"
+        WH02_freqs = [
+            6.65677505,
+            6.83950693,
+            7.02725489,
+            7.22015663,
+            7.41835362,
+            7.62199122,
+            7.83121878,
+            8.04618974,
+            8.26706176,
+            8.49399683,
+            8.72716139,
+            8.96672643,
+            9.21286765,
+            9.46576558,
+            9.72560569,
+            9.99257853,
+            10.26687992,
+            10.54871103,
+            10.83827854,
+            11.13579483,
+            11.44147809,
+            11.75555251,
+            12.07824844,
+            12.40980253,
+            12.75045796,
+        ]
+        WH02_vels = [
+            330,
+            280,
+            290,
+            280,
+            280,
+            300,
+            280,
+            300,
+            280,
+            280,
+            290,
+            260,
+            250,
+            260,
+            250,
+            250,
+            240,
+            250,
+            250,
+            240,
+            260,
+            250,
+            230,
+            230,
+            230,
+        ]
+        f_range = [[2, 3.7], [6.5, 13]]
+        err_thresh = None
+        freq_outliers = WH02_freqs
+        vel_outliers = WH02_vels
+
+    df_max = read_max_file(max_path)
+    freqs_grid, vels_grid, freqs, phase_vels, _, stds = compute_dispersion_curve(
+        df_max,
+        err_thresh=err_thresh,
+        freq_outliers=freq_outliers,
+        vel_outliers=vel_outliers,
+    )
+
+    inds = np.full(len(freqs), False)
+    for f_min, f_max in f_range:
+        # save the frequencies between frequency bounds
+        inds = inds | (freqs >= f_min) & (freqs <= f_max)
+
+    periods = np.flip(1 / freqs[inds])
+    phase_vels = np.flip(phase_vels[inds] / 1000)
+    stds = np.flip(stds[inds] / 1000)
+    data = FieldData(periods, phase_vels, stds)
+
+    return data, freqs_grid, vels_grid
 
 
 def get_profile():
