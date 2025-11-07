@@ -51,7 +51,7 @@ def setup_model(n_layers, site):
             bounds = {
                 "depth": np.array([[0.005, 0.050], [0.005, 0.200]]),  # km
                 "vel_s": np.array(
-                    [[0.100, 0.500], [0.200, 1.000], [0.750, 3.000]]
+                    [[0.100, 0.750], [0.200, 1.250], [0.500, 3.000]]
                 ),  # km/s
             }
         elif n_layers == 3:
@@ -132,9 +132,9 @@ def setup_model(n_layers, site):
 
             # set up data and inversion params
             bounds = {
-                "depth": np.array([[0.005, 0.050], [0.030, 0.090]]),  # km
+                "depth": np.array([[0.005, 0.050], [0.005, 0.200]]),  # km
                 "vel_s": np.array(
-                    [[0.100, 0.500], [0.200, 1.000], [0.750, 3.000]]
+                    [[0.100, 0.750], [0.200, 1.000], [0.750, 3.000]]
                 ),  # km/s
             }
         elif n_layers == 3:
@@ -194,7 +194,7 @@ def basic_inversion(
     assumed noise used in likelihood calculation (percentage)
     """
 
-    data = setup_data(site)
+    data, _, _ = setup_data(site)
     model_params = setup_model(n_layers, site)
 
     inversion_init_kwargs = {
@@ -234,7 +234,7 @@ def run_inversion():
     sample_prior = False
     set_starting_model = False
     rotate = False
-    n_layers = 4
+    n_layers = 2
 
     inversion, model_params = basic_inversion(
         n_layers=n_layers,
@@ -291,23 +291,5 @@ if __name__ == "__main__":
     # ambient_noise_data(site="WH01")
     # ambient_noise_data(site="WH02")
 
-    # run_inversion()
-
-    # plot final paper results
-    file_name = "1758652456"
-
-    input_path = (
-        "/home/jbyer/Documents/uoc/repos/mcmc/results/inversion/input-"
-        + file_name
-        + ".nc"
-    )
-    results_path = (
-        "/home/jbyer/Documents/uoc/repos/mcmc/results/inversion/results-"
-        + file_name
-        + ".nc"
-    )
-
-    input_ds = xr.open_dataset(input_path)
-    results_ds = xr.open_dataset(results_path)
-
-    plot_full_results(input_ds, results_ds, n_bins=100, save=True)
+    run_inversion()
+    

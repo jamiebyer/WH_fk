@@ -7,14 +7,16 @@ from obspy.signal.array_analysis import (
     array_transff_freqslowness,
 )
 
+from matplotlib.ticker import ScalarFormatter
 from matplotlib.gridspec import GridSpec
 
 import matplotlib.image as img
+import xarray as xr
 
-# import sys
+#import sys
 
-# sys.path.append("../src/")
-from fk_processing.dispersion_curves import compute_dispersion_curve, setup_data
+#sys.path.append("../src/")
+#from fk_processing.dispersion_curves import compute_dispersion_curve, setup_data
 from matplotlib.colors import LogNorm
 
 from matplotlib.ticker import ScalarFormatter
@@ -26,7 +28,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from fk_processing.dispersion_curves import read_max_file, read_txt_file
+# from fk_processing.dispersion_curves import read_max_file, read_txt_file
 from obspy import read
 
 # DATA
@@ -694,7 +696,7 @@ def plot_paper_dispersion_curves():
     fig.savefig(path, dpi=600)
 
 
-def plot_full_results(input_ds, results_ds, n_bins=100, save=False, out_filename=""):
+def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_filename=""):
     """
     plot results for paper.
     subplots
@@ -703,43 +705,32 @@ def plot_full_results(input_ds, results_ds, n_bins=100, save=False, out_filename
     - depth profile (near surface)
     """
 
+    # n_burn = input_ds.attrs["n_burn"]
+    n_burn = int(len(results_ds["step"]) / 3)
     # cut results by step
     results_ds = results_ds.copy().isel(
-        step=slice(input_ds.attrs["n_burn"], len(results_ds["step"]))
+        step=slice(n_burn, len(results_ds["step"]))
     )
 
-    freqs = 1 / input_ds["period"]
-
-    yerr = input_ds.attrs["sigma_data"]
-
-    # get data prediction
-    pred_ind = np.argmax(results_ds["logL"].values)
-
-    # estimated error
-    # *** depends if it's a percent error or not
-    # yerr = input_ds.attrs["sigma_data"] * results_ds["data_prob"]
-
-    # flatten data_pred, repeat period
-    hist_freqs = np.repeat(freqs, results_ds["data_pred"].shape[1])
-    data_preds = results_ds["data_pred"].values.flatten()
 
     # read in site locations as png?
 
     # Create a figure
-    fig = plt.figure(figsize=(10, 6))
+    fig = plt.figure(figsize=(30, 15))
 
     # Define a GridSpec layout
-    gs = GridSpec(2, 2, figure=fig)
+    gs = GridSpec(4, 5, figure=fig)
 
     # Add subplots with custom spans
-    ax1 = fig.add_subplot(gs[0, 0])  # site location
-    ax2 = fig.add_subplot(gs[1, 0])  # data pred vs. obs
-    ax3 = fig.add_subplot(gs[:, 1])  # depth profile
+    ax1 = fig.add_subplot(gs[0:2, 0:2])  # site location
+    ax2 = fig.add_subplot(gs[2:, 0:2])  # data pred vs. obs
+    ax3 = fig.add_subplot(gs[:, 2:-1])  # depth vel_s profile
+    ax4 = fig.add_subplot(gs[:, -1])  # depth hist profile
 
     # PLOT SITE LOCATION
     # reading png image file
     path = (
-        "/home/jbyer/Documents/uoc/repos/mapping/Get_Site_Locations_Jamie/WH01_map.png"
+        "./results/maps/" + site + "_map.png"
     )
     # path = "/home/jbyer/Documents/uoc/repos/mapping/Get_Site_Locations_Jamie/WH02_map.png"
     im = img.imread(path)
@@ -747,25 +738,59 @@ def plot_full_results(input_ds, results_ds, n_bins=100, save=False, out_filename
     ax1.imshow(im)
     ax1.axis("off")
 
+
     # PLOT DATA
+    freqs = 1 / input_ds["period"]
+    yerr = input_ds.attrs["sigma_data"]
+
+    # estimated error
+    # *** depends if it's a percent error or not
+    # yerr = input_ds.attrs["sigma_data"] * results_ds["data_prob"]
+
+    # flatten data_pred, repeat period
+    hist_freqs = np.repeat(freqs, results_ds["data_pred"].shape[1])
+    data_preds = results_ds["data_pred"].values.flatten() * 1000
+
     ax2.hist2d(hist_freqs, data_preds, bins=n_bins, cmin=1, norm="log")
     # fig.colorbar(im, ax=ax, label="count")
-    ax2.scatter(
-        freqs, results_ds["data_pred"].isel(step=pred_ind), zorder=3, label="data_pred"
-    )
     ax2.errorbar(
         freqs,
-        input_ds["data_obs"],
-        yerr,
+        input_ds["data_obs"] * 1000,
+        yerr * 1000,
         fmt="o",
         zorder=3,
-        c="orange",
+        c="black",
+        markersize=1,
         label="data_obs",
     )
 
+    ax2.set_xlim([1, 14.6])
+    ax2.set_ylim([200, 2000])
+
+    x_ticks = [1, 2, 3, 4, 5, 7, 10, 15]
+    y_ticks = [200, 300, 400, 600, 1000, 2000]
+
+    ax2.set_xticks(x_ticks)
+    ax2.set_yticks(y_ticks)
+
+    ax2.grid(which="major", alpha=0.75)
+    ax2.grid(which="minor", alpha=0.5)
+
+
+    #1.1144065354855293 14.599243307112378
+    #1.0 14.599243307112378
+    #201.0253891072783 1999.3442414661472
+    #201.02734987527654 1998.2952843920082
+
     ax2.set_xscale("log")
-    ax2.set_xlabel("frequency (Hz)")
-    ax2.set_ylabel("velocity (km/s)")
+    ax2.set_yscale("log")
+    ax2.set_xlabel("Frequency (Hz)")
+    ax2.set_ylabel("Velocity (m/s)")
+
+    for axis in [ax2.xaxis, ax2.yaxis]:
+        formatter = ScalarFormatter()
+        formatter.set_scientific(False)
+        axis.set_major_formatter(formatter)
 
     # ax2.legend()
 
@@ -783,7 +808,7 @@ def plot_full_results(input_ds, results_ds, n_bins=100, save=False, out_filename
         )
         * 1000
     )  # unit conversion
-    vel_s_bounds = input_ds["param_bounds"][input_ds["vel_s_inds"]]
+    vel_s_bounds = input_ds["param_bounds"][input_ds["vel_s_inds"]] * 1000
     vel_s_bins = np.linspace(
         np.min(vel_s_bounds[:, 0]), np.max(vel_s_bounds[:, 1]), n_bins
     )
@@ -807,7 +832,7 @@ def plot_full_results(input_ds, results_ds, n_bins=100, save=False, out_filename
         ),
         axis=0,
     )
-    vel_s = model_params[vel_s_inds]
+    vel_s = model_params[vel_s_inds] * 1000
 
     # for each layer
     # for each sample / step
@@ -822,10 +847,8 @@ def plot_full_results(input_ds, results_ds, n_bins=100, save=False, out_filename
             )
             # find bin index closest to layer vel_s
             vel_s_close_inds = np.argmin(abs(vel_s_bins - vel_s[layer_ind, step_ind]))
-
             counts[depth_upper_inds:depth_lower_inds, vel_s_close_inds] += 1
 
-    print(counts)
     h = ax3.imshow(
         counts,
         norm=LogNorm(),
@@ -833,17 +856,173 @@ def plot_full_results(input_ds, results_ds, n_bins=100, save=False, out_filename
         aspect="auto",
         interpolation="none",
     )
-    ax3.set_ylabel("depth (m)")
 
-    ax3.set_xlim(ax1.get_xlim()[::-1])
-    plt.gca().invert_yaxis()
+    ax3.set_xlim([200, 2000])
+    ax3.set_ylim([5, 125])
+
+    ax3.set_ylim(ax3.get_ylim()[::-1])
+
+    ax3.tick_params("y", labelleft=False)
+    ax3.yaxis.tick_right()
+
+    ax3.set_xlabel("Velocity (m/s)")
+
+    # plot depth histogram
+    for ind in range(input_ds.attrs["n_layers"]):
+        ax4.hist(
+            depth[ind],
+            bins=depth_bins,
+            density=True,
+            orientation="horizontal",
+        )
+
+    ax4.set_xlabel("Probability")
+    ax4.set_ylabel("Depth (m)")
+    ax4.yaxis.set_label_position("right")
+
+    ax4.set_ylim([5, 125])
+    ax4.set_yticks([5, 20, 40, 60, 80, 100, 120])
+    ax4.yaxis.tick_right()
+
+
+    # ax4.set_xlim(ax4.get_xlim()[::-1])
+    ax4.set_ylim(ax4.get_ylim()[::-1])
+    # plt.gca().invert_yaxis()
+
+
+    #ax1.text(1.03, 1600, "a)", fontsize=10)
+    #ax2.text(1.03, 1600, "b)", fontsize=10)
 
     if save:
-        plt.savefig("figures/" + out_filename + "/results-" + out_filename + ".png")
+        plt.savefig("figures/" + out_filename + "/results-" + out_filename + ".png", dpi=600)
     else:
         plt.show()
 
 
-if __name__ == "__main__":
 
-    plot_paper_dispersion_curves()
+
+def plot_vs30(
+    file_names
+):
+    """
+    Vs30 = sum(d_i)/sum(t_i) = 30/sum(d_i/v_i)
+    
+    Description	VS30 range (m/s)
+    Hard rock	1500
+    Rock	760-1500
+    Very dense soil and soft rock	360-760
+    Stiff soil	180-360
+    Soil with soft clay	<180
+    Site-specific analysis required	---
+    """
+    for file_name in file_names:
+        input_path = "./results/inversion/input-" + file_name + ".nc"
+        results_path = "./results/inversion/results-" + file_name + ".nc"
+
+        input_ds = xr.open_dataset(input_path)
+        results_ds = xr.open_dataset(results_path)
+
+        # n_burn = input_ds.attrs["n_burn"]
+        n_burn = int(len(results_ds["step"])/3)
+
+        # cut results by step
+        results_ds = results_ds.copy().isel(
+            step=slice(n_burn, len(results_ds["step"]))
+        )
+
+        # use results_ds to get model params
+        model_params = results_ds["model_params"].values
+
+        depth_bounds = input_ds["param_bounds"][input_ds["depth_inds"]]
+
+        depth_inds = input_ds["depth_inds"]
+        vel_s_inds = input_ds["vel_s_inds"]
+
+        n_steps = len(results_ds["step"])
+
+        depth = model_params[depth_inds] * 1000  # unit conversion to m
+        depth_plotting = np.concatenate(
+            (
+                np.zeros((1, n_steps)),
+                depth,
+                np.full((1, n_steps), np.max(depth_bounds[:, 1])) * 1000,  # unit conversion
+            ),
+            axis=0,
+        )
+
+        vel_s = model_params[vel_s_inds]
+
+        depth_boundary = 30
+        Vs30_list = []
+        # for each layer
+        # for each sample / step
+        for step_ind in range(n_steps):
+            # find first depth after 30 m
+            depth_diff = depth_plotting[:, step_ind] - depth_boundary
+            depth_diff[depth_diff < 0] = np.inf
+            
+            # smallest positive number
+            layer_ind = np.argmin(depth_diff)
+            depth_plotting[layer_ind] = 30
+
+            thickness = (
+                depth_plotting[1 : layer_ind + 1, step_ind]
+                - depth_plotting[:layer_ind, step_ind]
+            )
+
+            Vs30 = 30 / np.sum(
+                thickness[: layer_ind + 1] / vel_s[: layer_ind, step_ind]
+            )
+            Vs30_list.append(Vs30)
+
+        plt.hist(np.array(Vs30_list) * 1000, bins=100, density=True, alpha=0.5)
+
+
+    classes = [
+        # ["A", "Hard\nrock", 1500, 1550],
+        # ["B", "Rock", 760, 900],
+        ["C", "C (Very dense soil / soft rock)", 360, 380],
+        ["D", "D (Stiff soil)", 180, 230],
+        ["E", "E (Soft soil)", 0, 0],
+    ]
+    for c, name, vert, loc in classes:
+        plt.text(loc, 0.15, name)
+        plt.axvline(vert, c="k", ls="-")
+
+    # add percentage for classification
+
+    plt.xlabel("Vs 30 (m/s)")
+    # plt.ylabel("Counts")
+
+    # plt.xlim([0, 760])
+    plt.xlim([0, 500])
+
+    plt.tight_layout()
+
+    plt.savefig("figures/vs30.png")
+    
+
+if __name__ == "__main__":
+    site = "WH02"
+    if site == "WH01":
+        file_name = "1762299408" # WH01
+    elif site == "WH02":
+        file_name = "1762299506" # WH02
+
+    input_path = (
+        "./results/inversion/input-"
+        + file_name
+        + ".nc"
+    )
+    results_path = (
+        "./results/inversion/results-"
+        + file_name
+        + ".nc"
+    )
+
+    input_ds = xr.open_dataset(input_path)
+    results_ds = xr.open_dataset(results_path)
+
+    plot_full_results(input_ds, results_ds, site=site, n_bins=300, save=True, out_filename=file_name)
+
+    #plot_vs30(["1762299408", "1762299506"])
