@@ -1,6 +1,6 @@
 from plotting.inversion_plotting import *
 from plotting.data_plotting import *
-from fk_processing.dispersion_curves import *
+from processing.dispersion_curves import *
 
 import asyncio
 import numpy as np
@@ -19,7 +19,7 @@ from inversion.inversion import Inversion
 
 # from plotting.plot_dispersion_curve import *
 
-from fk_processing.dispersion_curves import compute_dispersion_curve
+from processing.dispersion_curves import compute_dispersion_curve
 
 import xarray as xr
 
@@ -228,64 +228,23 @@ def run_inversion():
     )
 
 
-def plot_dispersion_curve():
-
-    # max_path = "./data/WH01/max_files/WH01_fine.max"
-    # txt_path = "./data/WH01/txt_files/WH01_curve_fine.txt"
-
-    max_path = "./data/WH02/max_files/WH02_fine.max"
-    # txt_path = "./data/WH02/txt_files/WH02_curve_fine.txt"
-
-    # max_path = "./capon-importedsignals.max"
-
-    # plot full curve
-    """
-    # plot_computed_dispersion_curve(max_path, f_range=[[2.2, 7]], err_thresh=6)  # WH01
-    plot_computed_dispersion_curve(
-        max_path,
-        f_range=[[2, 3.7], [6.5, 13]],
-        freq_outliers=WH02_freqs,
-        vel_outliers=WH02_vels,
-    )  # WH02
-    """
-
-    # plot individual frequencies
-    # plot_dispersion_curve_frequency(
-    #     max_path, f_range=[[2.2, 7]], freq=2.2
-    # )
-    # plot_dispersion_curve_frequency(
-    #    max_path, f_range=[[2, 3.7], [9.8, 13]], freq=9.5
-    # )
-
-    # compare_dispersion_curves(max_path, txt_path, f_min=2.2, f_max=7.5)
-
-    # plot_site_maps()
-    pass
-
-
 if __name__ == "__main__":
 
-    # run_inversion()
-    # ambient_noise_data(site="WH01")
-    # ambient_noise_data(site="WH02")
+    max_path = "./results/WH04/1C/conventional-WH04-longest-test02.max"
+    # max_path = "./results/WH04/2C/conventionaltransverse-WH04-longest-default02.max"
+    # max_path = "./results/WH04/3C/rtbf-WH04-longest-test01.max"
+    plot_computed_dispersion_curve_curr(max_path)
+    # [plot_dispersion_curve_frequency(max_path, freq=f) for f in np.arange(2, 12, 0.5)]
+    # plot_dispersion_curve_frequency(max_path, freq=6)
 
-    # run_inversion()
+    max_paths = [
+        "./results/WH04/1C/conventional-WH04-default03.max",
+        "./results/WH04/2C/conventionaltransverse-WH04-default01.max",
+    ]
+    # plot_double_dispersion_curves(max_paths)
 
-    # plot final paper results
-    file_name = "1758652456"
+    # max_paths = [max_path.replace("4", str(i)) for i in np.arange(4, 10)]
+    # plot_multiple_dispersion_curves(max_paths)
 
-    input_path = (
-        "/home/jbyer/Documents/uoc/repos/mcmc/results/inversion/input-"
-        + file_name
-        + ".nc"
-    )
-    results_path = (
-        "/home/jbyer/Documents/uoc/repos/mcmc/results/inversion/results-"
-        + file_name
-        + ".nc"
-    )
-
-    input_ds = xr.open_dataset(input_path)
-    results_ds = xr.open_dataset(results_path)
-
-    plot_full_results(input_ds, results_ds, n_bins=100, save=True)
+    # plot_raw_data()
+    # slice_noise_data()
