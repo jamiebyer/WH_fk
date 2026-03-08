@@ -15,8 +15,13 @@ import xarray as xr
 
 #import sys
 
+<<<<<<< HEAD
 #sys.path.append("../src/")
 #from fk_processing.dispersion_curves import compute_dispersion_curve, setup_data
+=======
+# sys.path.append("../src/")
+from processing.dispersion_curves import compute_dispersion_curve, setup_data
+>>>>>>> 97e8a07e746e7c2736051883580c25a31c1bdcd0
 from matplotlib.colors import LogNorm
 
 from matplotlib.ticker import ScalarFormatter
@@ -28,8 +33,16 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+<<<<<<< HEAD
 # from fk_processing.dispersion_curves import read_max_file, read_txt_file
 from obspy import read
+=======
+from processing.dispersion_curves import read_max_file, read_txt_file
+import obspy
+from obspy import read, Stream, UTCDateTime
+import os
+
+>>>>>>> 97e8a07e746e7c2736051883580c25a31c1bdcd0
 
 # DATA
 
@@ -72,6 +85,216 @@ def read_max_file(max_file):
 
 
 
+def combine_mseed_files():
+    # read from coordinate file
+    data_path = "./data/WH03/2025_WHY_MTS/"
+    instrument_names = [
+        "C",
+        "E1",
+        "E2",
+        "E3",
+        "E4",
+        "E5",
+        "E6",
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N6",
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "W1",
+        "W2",
+        "W3",
+        "W4",
+        "W5",
+        "XE1",
+        "XE2",
+        "XE3",
+        "XE4",
+        "XW1",
+        "XW2",
+        "XW3",
+        "XW4",
+    ]
+
+    for inst in instrument_names:
+        for coord in ["N", "E", "Z"]:
+            traces = []
+            for file in os.listdir(data_path):
+                if inst not in file or "." + coord + "." not in file:
+                    continue
+                stream = read(data_path + file)
+                traces.append(stream[0])
+            output_fname = "./data/WH03/mseed_files/" + inst + coord + ".miniseed"
+            combined = Stream(traces)
+            combined.write(output_fname, format="MSEED")
+
+
+def split_miniseed_components():
+    sites = [
+        "0240",
+        "0252",
+        "0253",
+        "0424",
+        "0526",
+        "TP01",
+        "TP02",
+        "TP03",
+        "TP04",
+        "TP05",
+        "TP06",
+        "TP07",
+        "TP09",
+        "TP10",
+    ]
+
+    file_names = ["./data/WH02_3C/" + s + "_WH02.mseed" for s in sites]
+
+    for f in file_names:
+        st = read(f)
+        for s in st:
+            chan = s.stats["channel"][-1]
+            s.write(
+                f.replace("WH02_3C", "WH02_3C_split").replace(
+                    ".mseed", "" + chan + ".mseed"
+                ),
+                format="MSEED",
+            )
+
+
+def plot_raw_data(site):
+    # I would recommend applying a bandpass, or even just a high-pass filter >0.1 Hz.
+
+    """
+    Extract all vertical channel streams.
+    Apply any desired simple processing (demean, detrend, high-pass filter)
+    scale/normalize all traces (you might have to use a unique value since some traces have big spikes that would dwarf the normalization)
+    extract data as numpy array ( tr.data() ) and absolute times for each trace ( tr.times(type='utcdatetime') )
+    Plot all numpy arrays on the same figure. For each subsequent instrument/array, add a constant vertical shift to the array so that they plot above each other (the y axis now becomes meaningless).
+    However you managed to shift the arrays along the vertical axis (for example, each is shifted by a value of 1), then you can customize the y axis ticks ( ax.set_yticks([1,2,3,...,N]) ) and the corresponding tick labels ( ax.set_yticklabels( ['TP01', 'TP02', ..., 'TP10' ] ) )
+    """
+
+    if site == "WH01" or site == "WH02":
+        # data_path = "./data/" + site + "/"
+        data_path = "./data/" + site + "_3C_split/"
+        coords_path = (
+            "./data/" + site + "/txt_files/" + site + "_loc_corrected_geopsy.txt"
+        )
+    elif site == "WH03" or site == "WH04":
+        data_path = "./data/" + site + "/2025_WHY_MTS/"
+        coords_path = "./data/" + site + "/" + site + "_loc_corrected_geopsy.txt"
+
+    # read in coords file
+    df = pd.read_csv(coords_path, names=["instrument", "x", "y"], sep="\s+")
+
+    # assemble traces
+    traces = []
+    for file in os.listdir(data_path):
+        if ".miniseed" in file or ".mseed" in file:
+            stream = read(data_path + file)
+            instrument = stream[0].stats["station"]
+            chan = stream[0].stats["channel"]
+            if chan == "EPZ" or chan == "HHZ":
+                # slice data
+                # 6:30 - 9:30
+                # 00:48 - 13:17
+                tr = stream[0]
+                if site == "WH03":
+                    tr = tr.trim(
+                        # longest section WH03
+                        starttime=UTCDateTime(2025, 10, 23, 19, 00, 00),
+                        endtime=UTCDateTime(2025, 10, 23, 21, 15, 00),
+                    )
+                elif site == "WH04":
+                    tr = tr.trim(
+                        # longest section WH04
+                        starttime=UTCDateTime(2025, 10, 24, 1, 45, 0),
+                        endtime=UTCDateTime(2025, 10, 24, 12, 30, 0),
+                        # quietest section WH04
+                        # starttime=UTCDateTime(2025, 10, 24, 8, 0, 0),
+                        # endtime=UTCDateTime(2025, 10, 24, 11, 0, 0),
+                    )
+
+                """
+                # set distance
+                dist = np.sqrt(
+                    df["x"][df["instrument"] == "SS_" + str(instrument)] ** 2
+                    + df["y"][df["instrument"] == "SS_" + str(instrument)] ** 2
+                )
+                tr.stats.distance = dist
+                """
+                traces.append(tr)
+
+    # combined = obspy.Stream(traces)
+
+    # create a stream with traces from all the instruments
+    # plot with obspy
+    # combined.plot()
+    # combined.plot(type="section")
+
+    # n_plots = 10
+    n_plots = 7
+    # n_plots = 8
+    # n_plots = len(traces)
+    for n in range(int(np.ceil(len(traces) / n_plots))):
+        fig, axes = plt.subplots(nrows=n_plots, sharex=True, sharey=True)
+        for ind, tr in enumerate(traces[n_plots * n : n_plots * (n + 1)]):
+            # np.arange(np.datetime64('2017-01-01'), np.datetime64('2017-01-08'))
+
+            times = pd.date_range(
+                np.datetime64(tr.stats["starttime"]),
+                np.datetime64(tr.stats["endtime"]),
+                periods=tr.stats["npts"],
+            ).to_pydatetime()
+            # xdata = tr.times()
+            # ydata = tr.data
+            axes[ind].plot(times, tr.data, c="black")
+            axes[ind].text(
+                0.01,
+                0.99,
+                tr.stats["station"],
+                fontsize=12,
+                ha="left",
+                va="top",
+                transform=axes[ind].transAxes,
+            )
+        # plt.ylim(-30, 30)
+        # plt.ylim(-1.2, 1.2)
+        plt.suptitle(site)
+        plt.show()
+
+
+def slice_noise_data():
+    data_path = "./data/WH03/2025_WHY_MTS/"
+    # data_path = "./data/WH04/2025_WHY_MTS/"
+    for file in os.listdir(data_path):
+        if ".miniseed" in file:
+            stream = read(data_path + file)
+            # 6:30 - 9:30
+            # 00:48 - 13:17
+            tr = stream[0]
+            tr = tr.trim(
+                # longest section WH03
+                starttime=UTCDateTime(2025, 10, 23, 19, 00, 00),
+                endtime=UTCDateTime(2025, 10, 23, 21, 15, 00),
+                # longest section WH04
+                # starttime=UTCDateTime(2025, 10, 24, 1, 45, 0),
+                # endtime=UTCDateTime(2025, 10, 24, 12, 30, 0),
+                # quietest section WH04
+                # starttime=UTCDateTime(2025, 10, 24, 8, 0, 0),
+                # endtime=UTCDateTime(2025, 10, 24, 11, 0, 0),
+            )
+
+            output_fname = "./data/WH03/mseed_files/" + file
+            sliced_tr = Stream(tr)
+            sliced_tr.write(output_fname, format="MSEED")
+
+
 def ambient_noise_data(site):
     stations = [
         "0240",
@@ -96,17 +319,33 @@ def ambient_noise_data(site):
         print(st[0].stats)
 
 
-# MAPS
-
-
-# AMBIENT NOISE
-
-
-def plot_ambient_noise():
-    pass
-
-
 # ARRAY RESPONSE
+
+
+def plot_array_layout():
+    # plot array layout from relative positions
+    # label instruments and indicate the odd ones
+    site = "WH04"
+
+    data_path = "./data/" + site + "/" + site + "_loc_corrected_geopsy.txt"
+
+    df = pd.read_csv(data_path, names=["instrument", "x", "y"], sep="\s+")
+
+    for i, row in df.iterrows():
+        instrument = row["instrument"].replace("SS_", "")
+        if site == "WH03" and ((instrument == "25242") or (instrument == "25057")):
+            color = "red"
+        elif site == "WH04" and ((instrument == "24625") or (instrument == "25257")):
+            color = "red"
+        else:
+            color = "black"
+
+        plt.scatter(row["x"], row["y"], c=color)
+
+    plt.title(site)
+    plt.xlabel("x (m)")
+    plt.ylabel("y (m)")
+    plt.show()
 
 
 def plot_example_array_response():
@@ -167,11 +406,17 @@ def plot_example_array_response():
     plt.show()
 
 
-def plot_array_response():
+def plot_array_response(site):
     # https://docs.obspy.org/tutorial/code_snippets/array_response_function.html
     # https://geophydog.cool/post/array_response_function/#__31-the-geometry-effects__
 
-    data_path = "./data/WH01/txt_files/WH01_loc_corrected_geopsy.txt"
+    if site == "WH01" or site == "WH02":
+        data_path = (
+            "./data/" + site + "/txt_files/" + site + "_loc_corrected_geopsy.txt"
+        )
+    elif site == "WH03" or site == "WH04":
+        data_path = ""
+
     # generate array coordinates
     coords_df = pd.read_csv(
         data_path,
@@ -223,12 +468,14 @@ def plot_array_response():
     # transff = array_transff_freqslowness
 
     # plot
-    plt.subplot(2, 2, 1)
+    plt.subplot(1, 3, 1)
+    # plt.subplot(3, 1, 1)
     plt.scatter(coords_df["x"], coords_df["y"])
     plt.xlabel("x (m)")
     plt.ylabel("y (m)")
 
-    plt.subplot(2, 2, 2)
+    plt.subplot(1, 3, 2)
+    # plt.subplot(3, 1, 2)
     plt.pcolor(kx / 1000, ky / 1000, transff.T)
 
     # plt.xlim(kxmin / 1000, kxmax / 1000)
@@ -240,7 +487,8 @@ def plot_array_response():
     plt.ylabel("k_y (rad/m)")
     plt.colorbar(label="array response")
 
-    plt.subplot(2, 2, 3)
+    plt.subplot(1, 3, 3)
+    # plt.subplot(3, 1, 3)
     for yind in range(len(ky)):
         k_mag = np.sqrt(kx**2 * ky[yind] ** 2)
         inds = np.argsort(k_mag)
@@ -249,8 +497,8 @@ def plot_array_response():
         # )
         plt.plot(k_mag[inds] / 1000000, transff[inds, yind], c="grey", alpha=0.005)
 
-    plt.axvline(x=k_min / 1000)
-    plt.axvline(x=k_max / 1000)
+    # plt.axvline(x=k_min / 1000)
+    # plt.axvline(x=k_max / 1000)
 
     plt.axhline(y=0.5)
 
@@ -258,8 +506,8 @@ def plot_array_response():
     plt.ylabel("array response")
 
     plt.suptitle("WH01 array transfer function")
-    plt.tight_layout()
-    # plt.show()
+    # plt.tight_layout()
+    plt.show()
 
 
 # DISPERSION CURVES
@@ -335,8 +583,8 @@ def plot_computed_dispersion_curve(
         + max_path.split("/")[-1].split("_fine.")[0]
         + "_curve.png"
     )
-    plt.savefig(path)
-    # plt.show()
+    # plt.savefig(path)
+    plt.show()
 
 
 def plot_geopsy_dispersion_curve(max_path, txt_path):
@@ -372,7 +620,7 @@ def plot_geopsy_dispersion_curve(max_path, txt_path):
     plt.xscale("log")
     plt.yscale("log")
 
-    plt.ylim([190, 2100])
+    # plt.ylim([190, 2100])
 
     plt.xlabel("frequency (Hz)")
     plt.ylabel("velocity (m/s)")
@@ -520,7 +768,7 @@ def compare_dispersion_curves(max_path, txt_path, f_min, f_max):
     plt.savefig(path)
 
 
-def plot_dispersion_curve_frequency(max_path, f_range, freq):
+def plot_dispersion_curve_frequency(max_path, freq):
     """
     Plot dispersion curve from max file.
     """
@@ -530,24 +778,16 @@ def plot_dispersion_curve_frequency(max_path, f_range, freq):
         df_max
     )
 
-    inds = np.full(len(freqs), True)
-    for f_min, f_max in f_range:
-        # save the frequencies between frequency bounds
-        inds = inds & (freqs >= f_min) & (freqs <= f_max)
-
     plt.figure(figsize=(6, 4))
 
     freq_diff = np.abs(freqs - freq)
-    ind = np.where(freq_diff == freq_diff.min())
-    freq_diff = np.abs(freqs_grid - freq)
-    inds = np.where(freq_diff == freq_diff.min())
+    ind = np.where(freq_diff == freq_diff.min())[0]
+    grid_inds = np.where(freqs_grid == np.full(freqs_grid.shape, freqs[ind]))[0]
 
-    plt.hist(vels_grid[inds[0]], bins=40)
+    plt.hist(vels_grid[grid_inds], bins=40)
 
     # plot frequency and velocity 2D histogram
     # plt.xscale("log")
-
-    # plt.ylim([190, 2010])
 
     plt.xlabel("velocity (m/s)")
     plt.ylabel("counts")
@@ -562,14 +802,13 @@ def plot_dispersion_curve_frequency(max_path, f_range, freq):
     plt.tight_layout()
 
     path = (
-        "./figures/dispersion_curves/"
-        + max_path.split("/")[-1].split("_fine.")[0]
+        "./figures/freqs/capon-WH01-test24/"
+        + max_path.split("/")[-1]
         + "_freq "
         + str(freq)
         + ".png"
     )
     plt.savefig(path)
-    # plt.show()
     plt.close()
 
 
@@ -582,7 +821,7 @@ def plot_paper_dispersion_curves():
     freqs_grid_WH02 = freqs_grid_WH02.values
     vels_grid_WH02 = vels_grid_WH02.values
 
-    fig, (ax1, ax2) = plt.subplots(nrows=2, sharex=True, figsize=(6, 8))
+    fig, (ax1, ax2) = plt.subplots(ncols=2, sharey=True, figsize=(10, 5))
 
     freqs_WH01 = 1 / data_WH01.periods
     vels_WH01 = data_WH01.data_obs * 1000
@@ -608,8 +847,6 @@ def plot_paper_dispersion_curves():
         np.log10(np.min(vels_grid_WH02)), np.log10(np.max(vels_grid_WH02)), 75
     )
 
-    plt.figure(figsize=(30, 10))
-    # """
     # plot frequency and velocity 2D histogram
     h1 = ax1.hist2d(
         freqs_grid_WH01,
@@ -631,16 +868,6 @@ def plot_paper_dispersion_curves():
         cmap="coolwarm",
         norm=LogNorm(),
     )
-
-    # """
-
-    # fig.colorbar(h1[3], label="counts", cax=ax1)
-    # fig.colorbar(h2[3], label="counts", cax=ax2)
-
-    # fig.colorbar(h1, ax=ax1)
-    # fig.colorbar(h2, ax=ax2)
-
-    # ax2.colorbar(label="counts")
 
     ax1.errorbar(
         freqs_WH01,
@@ -670,24 +897,15 @@ def plot_paper_dispersion_curves():
     ax1.set_xscale("log")
     ax1.set_yscale("log")
 
-    # ax2.set_xscale("log")
+    ax2.set_xscale("log")
     ax2.set_yscale("log")
 
-    # ax1.set_xlabel("frequency (Hz)")
-    ax1.set_ylabel("Velocity (m/s)")
+    ax1.set_xlabel("Frequency (Hz)")
+    ax1.set_ylabel("Phase velocity (m/s)")
     ax1.grid(True)
 
     ax2.set_xlabel("Frequency (Hz)")
-    ax2.set_ylabel("Velocity (m/s)")
-
-    # tick marks
-    # major_ticks = np.logspace(0, 1.2, 8)
-    # x_ticks = np.logspace(0, np.log10(15), 6)
-    # minor_ticks = np.arange(0, 101, 5)
-    # y_ticks = np.logspace(np.log10(200), np.log10(2000), 8)
-
-    # x_ticks = [1, 1.72, 2.95, 5.08, 8.73, 15]
-    # y_ticks = [200, 278, 386, 537, 746, 1036, 1439, 2000]
+    # ax2.set_ylabel("Phase velocity (m/s)")
 
     x_ticks = [1, 2, 3, 4, 5, 7, 10, 15]
     y_ticks = [200, 300, 400, 600, 1000, 2000]
@@ -698,6 +916,7 @@ def plot_paper_dispersion_curves():
     [ 1., 14.59924331]
     [ 201.02734988, 1998.29528439]
     """
+    ax1.set_xticks(x_ticks)
     ax2.set_xticks(x_ticks)
     # ax2.set_xticks(minor_ticks, minor=True)
 
@@ -713,8 +932,8 @@ def plot_paper_dispersion_curves():
     ax2.grid(which="major", alpha=0.75)
     ax2.grid(which="minor", alpha=0.5)
 
-    ax1.text(1.03, 1600, "A", fontsize=20, weight="bold")
-    ax2.text(1.03, 1600, "B", fontsize=20, weight="bold")
+    ax1.text(1.03, 1800, "a)")
+    ax2.text(1.03, 1800, "b)")
 
     for axis in [ax1.xaxis, ax1.yaxis, ax2.xaxis, ax2.yaxis]:
         formatter = ScalarFormatter()
@@ -723,14 +942,23 @@ def plot_paper_dispersion_curves():
 
     plt.tight_layout()
 
-    cbaxes = inset_axes(ax2, width="5%", height="40%", loc=1)
-    cbar = fig.colorbar(h2[3], ax=[ax1, ax2], cax=cbaxes)
+    cbaxes = inset_axes(
+        ax2,
+        width="5%",
+        height="35%",
+        loc="upper right",
+        bbox_to_anchor=(-0.02, 0.05, 1.0, 1.0),
+        bbox_transform=ax2.transAxes,
+        borderpad=2.5,
+    )
+    cbar = fig.colorbar(h2[3], ax=[ax1, ax2], cax=cbaxes, pad=0.5)
     # plt.colorbar(cax=cbaxes, ticks=[0.0, 1], orientation="horizontal")
     cbar.set_label("Counts", labelpad=-55)
     cbar.ax.set_yticks([1, 10, 100])
     cbar.ax.set_yticklabels([1, 10, 100])
 
-    path = "./figures/final/dispersion_curves.png"
+    # path = "./figures/final/dispersion_curves.png"
+    path = "./figures/final/dispersion_curves.pdf"
     fig.savefig(path, dpi=600)
 
 
@@ -965,6 +1193,7 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
         plt.show()
 
 
+<<<<<<< HEAD
 
 
 def plot_vs30(
@@ -1292,3 +1521,259 @@ if __name__ == "__main__":
     plot_full_results(input_ds, results_ds, site=site, n_bins=300, save=True, out_filename=file_name)
 
     # plot_vs30_subplots(["1762299408", "1762299506"])
+=======
+def plot_computed_dispersion_curve_curr(max_path):
+    """
+    Plot dispersion curve from max file.
+    """
+    df_max = read_max_file(max_path)
+    freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
+        df_max,
+    )
+
+    freq_bins = np.logspace(
+        np.log10(np.min(freqs_grid)), np.log10(np.max(freqs_grid)), len(freqs) + 1
+    )
+    vel_bins = np.logspace(
+        np.log10(np.min(vels_grid)), np.log10(np.max(vels_grid)), len(vel_meds) + 1
+    )
+
+    fig, ax1 = plt.subplots(figsize=(10, 5))
+
+    # plot frequency and velocity 2D histogram
+    plt.hist2d(
+        freqs_grid,
+        vels_grid,
+        bins=[
+            freq_bins,
+            vel_bins,
+        ],
+        cmap="coolwarm",
+        norm=LogNorm(),
+    )
+
+    plt.xscale("log")
+    plt.yscale("log")
+    # plt.ylim([100, 2200])
+    plt.ylim([50, 2200])
+
+    plt.xlabel("frequency (Hz)")
+    plt.ylabel("phase velocity (m/s)")
+
+    plt.colorbar(label="counts")
+
+    # plot dispersion curve with errors
+    # plt.plot(freqs_curve, vels_curve)
+
+    """
+    plt.errorbar(
+        freqs,
+        vel_meds,
+        stds,
+        marker="o",
+        markersize=3,
+        c="black",
+        elinewidth=1,
+        barsabove=True,
+    )
+    """
+    for axis in [ax1.xaxis, ax1.yaxis]:
+        formatter = ScalarFormatter()
+        formatter.set_scientific(False)
+        axis.set_major_formatter(formatter)
+
+    plt.grid(True)
+
+    plt.title(
+        "\nPERIOD_COUNT=20, WINDOW_OVERLAP (%)=50, ANTI-TRIGGERING_ON_RAW_SIGNAL (y/n)=n"
+        "\nSTATISTIC_COUNT=0, FREQ_BAND_WIDTH=0.10"
+        "\nGRID_STEP (rad/m)= 0.005, GRID_SIZE (rad/m)=2.00, N_MAXIMA=0"
+    )
+    plt.tight_layout()
+
+    path = "./figures/WH02/1C/conventional-WH02-default08.png"
+    # path = "./figures/WH04/2C/conventionaltransverse-WH04-longest-default03.png"
+    # path = "./figures/WH01/3C/rtbf-WH01-test01.png"
+    plt.savefig(path)
+    # plt.show()
+
+
+def plot_double_dispersion_curves(max_paths):
+    fig, axes = plt.subplots(ncols=2, sharey=True, figsize=(10, 5))
+
+    titles = ["Vertical", "Transverse"]
+
+    for ind, p in enumerate(max_paths):
+        df_max = read_max_file(p)
+        freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = (
+            compute_dispersion_curve(
+                df_max,
+            )
+        )
+
+        freq_bins = np.logspace(
+            np.log10(np.min(freqs_grid)), np.log10(np.max(freqs_grid)), len(freqs) + 1
+        )
+        vel_bins = np.logspace(
+            np.log10(np.min(vels_grid)), np.log10(np.max(vels_grid)), len(vel_meds) + 1
+        )
+
+        # plot frequency and velocity 2D histogram
+        axes[ind].hist2d(
+            freqs_grid,
+            vels_grid,
+            bins=[
+                freq_bins,
+                vel_bins,
+            ],
+            cmap="coolwarm",
+            norm=LogNorm(),
+        )
+
+        axes[ind].set_xscale("log")
+        axes[ind].set_yscale("log")
+        # plt.ylim([100, 2200])
+        axes[ind].set_ylim([50, 2200])
+
+        axes[ind].set_xlabel("frequency (Hz)")
+        axes[ind].set_ylabel("phase velocity (m/s)")
+
+        # axes[ind].colorbar(label="counts")
+
+        # plot dispersion curve with errors
+        # plt.plot(freqs_curve, vels_curve)
+
+        """
+        axes[ind].errorbar(
+            freqs,
+            vel_meds,
+            stds,
+            marker="o",
+            markersize=3,
+            c="black",
+            elinewidth=1,
+            barsabove=True,
+        )
+        """
+        for axis in [axes[ind].xaxis, axes[ind].yaxis]:
+            formatter = ScalarFormatter()
+            formatter.set_scientific(False)
+            axis.set_major_formatter(formatter)
+
+        axes[ind].grid(True)
+        axes[ind].grid(True, which="minor", alpha=0.5)
+        axes[ind].set_title(titles[ind])
+
+    plt.suptitle("WH04")
+    plt.tight_layout()
+
+    # path = "./figures/processing/WH02-default02.png"
+    # path = "./figures/sensitivity_tests/threshold/conventional-WH01-test10.png"
+    # path = "./figures/processing/WH01-3C-test02.png"
+    # plt.savefig(path)
+    plt.show()
+
+
+def plot_multiple_dispersion_curves(max_paths):
+    """
+    Plot dispersion curve from max file.
+    """
+    fig, ax1 = plt.subplots(figsize=(10, 5))
+    for p in max_paths:
+        df_max = read_max_file(p)
+        freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = (
+            compute_dispersion_curve(
+                df_max,
+            )
+        )
+
+        freq_bins = np.logspace(
+            np.log10(np.min(freqs)), np.log10(np.max(freqs)), len(freqs)
+        )
+        vel_bins = np.logspace(
+            np.log10(np.min(vel_meds)), np.log10(np.max(vel_meds)), len(vel_meds)
+        )
+
+        # plot frequency and velocity 2D histogram
+        """
+        plt.hist2d(
+            freqs_grid,
+            vels_grid,
+            bins=[
+                freq_bins,
+                vel_bins,
+            ],
+            cmap="coolwarm",
+            norm=LogNorm(),
+        )
+        """
+
+        # plot dispersion curve with errors
+        # plt.plot(freqs_curve, vels_curve)
+
+        plt.errorbar(
+            freqs,
+            vel_meds,
+            stds,
+            marker="o",
+            markersize=3,
+            # c="black",
+            elinewidth=1,
+            barsabove=True,
+        )
+
+    plt.xlabel("frequency (Hz)")
+    plt.ylabel("velocity (m/s)")
+
+    plt.xscale("log")
+    plt.yscale("log")
+
+    for axis in [ax1.xaxis, ax1.yaxis]:
+        formatter = ScalarFormatter()
+        formatter.set_scientific(False)
+        axis.set_major_formatter(formatter)
+
+    plt.grid(True)
+
+    plt.tight_layout()
+
+    # plt.savefig(path)
+    plt.show()
+
+
+def plot_curve_picking():
+    paths = [
+        # "./results/curves/curve-WH01-1C.csv",
+        # "./results/curves/curve-WH02-1C.csv",
+        # "./results/curves/curve-WH03-1C.csv",
+        "./results/curves/curve-WH04-1C.csv",
+        # "./results/curves/curve-WH01-2C.csv",
+        # "./results/curves/curve-WH02-2C.csv",
+        # "./results/curves/curve-WH03-2C.csv",
+        "./results/curves/curve-WH04-2C.csv",
+    ]
+
+    for p in paths:
+        df = pd.read_csv(p)
+
+        plt.errorbar(df["freqs"], df["vels"], yerr=df["stds"])
+
+    # df = pd.read_csv("./results/curves/curve-WH02-1C-2.csv")
+    # plt.errorbar(df["freqs"], df["vels"], yerr=df["stds"], c="blue")
+
+    plt.xlabel("frequency (Hz)")
+    plt.ylabel("velocity (m/s)")
+
+    plt.xscale("log")
+    plt.yscale("log")
+
+    # plt.legend(["WH01-1C", "WH02-1C", "WH03-1C", "WH04-1C"])
+    plt.legend(["WH04-1C", "WH04-2C"])
+    plt.show()
+
+
+if __name__ == "__main__":
+    # max_path = "./results/WH01/conventional-WH01-test02.max"
+    # plot_computed_dispersion_curve_curr(max_path)
+    pass
+>>>>>>> 97e8a07e746e7c2736051883580c25a31c1bdcd0

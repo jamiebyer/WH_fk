@@ -49,8 +49,6 @@ def run_geopsy():
     # utm_zone x y station_name
     # subprocess.run([geopsy_fk_path, file_list], shell=True)
 
-    # list parameters
-    # geopsy-fk -param-example
     # run beamforming
     # geopsy-fk -db Mirandola.gpy -group C_135_405-Z -param limits.param
 
@@ -102,11 +100,10 @@ def read_max_file(max_file):
     names = [
         "abs_time",
         "frequency",
-        # "slowness",
-        "polarization",
+        # "polarization",
         "slowness",
-        # "",
         "azimuth",
+        "",
         "el",
         "no",
         "power",
@@ -164,6 +161,11 @@ def compute_dispersion_curve(df, err_thresh=None, freq_outliers=[], vel_outliers
         np.array(vel_means_curve),
         np.array(stds_curve),
     )
+
+
+def peak_picking():
+    # getting the mode within a range...
+    pass
 
 
 def setup_data(site):
@@ -253,152 +255,3 @@ def setup_data(site):
     data = FieldData(periods, phase_vels, stds)
 
     return data, freqs_grid, vels_grid
-
-
-def get_profile():
-    # cut results by step
-    results_ds = results_ds.copy().isel(
-        step=slice(input_ds.attrs["n_burn"], len(results_ds["step"]))
-    )
-
-    # use results_ds to get model params
-    model_params = results_ds["model_params"].values
-
-    # true model
-    if plot_true_model:
-        true_params = input_ds["model_true"].values
-
-    # define hist bins between bounds
-    # use param inds to get depth, and use min and max of all depth bounds
-    depth_bounds = input_ds["param_bounds"][input_ds["depth_inds"]]
-    depth_bins = (
-        np.linspace(
-            np.min(depth_bounds[:, 0]),
-            np.max(depth_bounds[:, 1]),
-            n_bins,
-        )
-        * 1000
-    )  # unit conversion
-    vel_s_bounds = input_ds["param_bounds"][input_ds["vel_s_inds"]]
-    vel_s_bins = np.linspace(
-        np.min(vel_s_bounds[:, 0]), np.max(vel_s_bounds[:, 1]), n_bins
-    )
-    counts = np.zeros((n_bins, n_bins))
-
-    # loop over every resulting model
-    # add vel_s 1 to hist bins above depth
-    # add vel_s 2 to hist bins below depth
-
-    depth_inds = input_ds["depth_inds"]
-    vel_s_inds = input_ds["vel_s_inds"]
-
-    n_steps = len(results_ds["step"])
-
-    depth = model_params[depth_inds] * 1000  # unit conversion to m
-    depth_plotting = np.concatenate(
-        (
-            np.zeros((1, n_steps)),
-            depth,
-            np.full((1, n_steps), np.max(depth_bounds[:, 1])) * 1000,  # unit conversion
-        ),
-        axis=0,
-    )
-    vel_s = model_params[vel_s_inds]
-
-    # for each layer
-    # for each sample / step
-    for layer_ind in range(input_ds.attrs["n_layers"] + 1):
-        for step_ind in range(n_steps):
-            # find bin index closest to layer depth
-            depth_upper_inds = np.argmin(
-                abs(depth_bins - depth_plotting[layer_ind, step_ind])
-            )
-            depth_lower_inds = np.argmin(
-                abs(depth_bins - depth_plotting[layer_ind + 1, step_ind])
-            )
-            # find bin index closest to layer vel_s
-            vel_s_close_inds = np.argmin(abs(vel_s_bins - vel_s[layer_ind, step_ind]))
-
-            counts[depth_upper_inds:depth_lower_inds, vel_s_close_inds] += 1
-
-    # plot true model overtop
-    if plot_true_model:
-        true_depth = true_params[depth_inds] * 1000
-        true_vel_s = true_params[vel_s_inds]
-        true_depth_plotting = np.concatenate(
-            ([0], true_depth, [np.max(depth_bounds[:, 1]) * 1000])
-        )
-
-        true_model = []
-        for layer_ind in range(input_ds.attrs["n_layers"] + 1):
-            true_model.append([true_depth_plotting[layer_ind], true_vel_s[layer_ind]])
-            true_model.append(
-                [true_depth_plotting[layer_ind + 1], true_vel_s[layer_ind]]
-            )
-
-    fig = plt.figure()
-    gs = GridSpec(1, 3, figure=fig)
-
-    # Add subplots with custom spans
-    ax1 = fig.add_subplot(gs[0, 0])
-    ax2 = fig.add_subplot(gs[0, 1:], sharey=ax1)
-
-    # plot depth histogram
-    for ind in range(input_ds.attrs["n_layers"]):
-        ax1.hist(
-            depth[ind],
-            bins=depth_bins,
-            density=True,
-            orientation="horizontal",
-        )
-
-    ax1.set_ylim(
-        [
-            np.min(depth_bounds[:, 0]) * 1000,
-            np.max(depth_bounds[:, 1]) * 1000,
-        ]
-    )
-    ax1.set_ylabel("depth (m)")
-
-    ax1.set_xlim(ax1.get_xlim()[::-1])
-    plt.gca().invert_yaxis()
-
-    h = ax2.imshow(
-        counts,
-        norm=LogNorm(),
-        extent=[vel_s_bins[0], vel_s_bins[-1], depth_bins[-1], depth_bins[0]],
-        aspect="auto",
-        interpolation="none",
-    )
-
-    # plot true model overtop
-    if plot_true_model:
-        true_model = np.array(true_model)
-        ax2.plot(true_model[:, 1], true_model[:, 0], c="red")
-
-    fig.colorbar(h, ax=ax2)
-    ax2.set_xlabel("vel s (km/s)")
-
-    # make these tick labels invisible
-    ax2.tick_params("y", labelleft=False)
-
-    plt.tight_layout()
-
-    if save:
-        plt.savefig("figures/" + out_filename + "/profile-" + out_filename + ".png")
-    else:
-        plt.show()
-
-
-def compute_vs30():
-    # time-averaged shear-wave velocity to 30 m depth
-
-    # read in inversion results
-    # get most probable model params
-
-    # compute vs30
-    # sum the depths
-    # determine what depth contains 30m, use params until that point
-    # interface at 30m
-
-    vs30 = np.sum(depth) / np.sum(depth / vel_s)
