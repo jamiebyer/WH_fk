@@ -19,6 +19,8 @@ from inversion.inversion import Inversion
 
 # from plotting.plot_dispersion_curve import *
 
+from plotting.well_holes import *
+
 from processing.dispersion_curves import compute_dispersion_curve
 
 import xarray as xr
@@ -230,21 +232,27 @@ def run_inversion():
 
 if __name__ == "__main__":
 
-    max_path = "./results/WH04/1C/conventional-WH04-longest-test02.max"
-    # max_path = "./results/WH04/2C/conventionaltransverse-WH04-longest-default02.max"
-    # max_path = "./results/WH04/3C/rtbf-WH04-longest-test01.max"
-    plot_computed_dispersion_curve_curr(max_path)
+    max_path = "./results/fk/WH02/1C/conventional-WH02-default08.max"
+    # max_path = "./results/fk/WH04/2C/conventionaltransverse-WH04-longest-default03.max"
+    # max_path = "./results/WH01/3C/rtbf-WH01-test01.max"
+    # plot_computed_dispersion_curve_curr(max_path)
     # [plot_dispersion_curve_frequency(max_path, freq=f) for f in np.arange(2, 12, 0.5)]
     # plot_dispersion_curve_frequency(max_path, freq=6)
 
     max_paths = [
-        "./results/WH04/1C/conventional-WH04-default03.max",
-        "./results/WH04/2C/conventionaltransverse-WH04-default01.max",
+        "./results/fk/WH04/1C/conventional-WH04-longest-default06.max",
+        "./results/fk/WH04/2C/conventionaltransverse-WH04-longest-default03.max",
     ]
     # plot_double_dispersion_curves(max_paths)
 
     # max_paths = [max_path.replace("4", str(i)) for i in np.arange(4, 10)]
     # plot_multiple_dispersion_curves(max_paths)
 
-    # plot_raw_data()
+    # plot_array_response("WH01")
+    # plot_raw_data("WH01")
     # slice_noise_data()
+    # plot_array_layout()
+
+    # well_hole_plotting("WH02")
+
+    plot_curve_picking()

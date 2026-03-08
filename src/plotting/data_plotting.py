@@ -27,6 +27,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from processing.dispersion_curves import read_max_file, read_txt_file
+import obspy
 from obspy import read, Stream, UTCDateTime
 import os
 
@@ -116,36 +117,111 @@ def split_miniseed_components():
             )
 
 
-def plot_raw_data():
-    # data_path = "./data/WH03/2025_WHY_MTS/"
-    data_path = "./data/WH04/2025_WHY_MTS/"
+def plot_raw_data(site):
+    # I would recommend applying a bandpass, or even just a high-pass filter >0.1 Hz.
+
+    """
+    Extract all vertical channel streams.
+    Apply any desired simple processing (demean, detrend, high-pass filter)
+    scale/normalize all traces (you might have to use a unique value since some traces have big spikes that would dwarf the normalization)
+    extract data as numpy array ( tr.data() ) and absolute times for each trace ( tr.times(type='utcdatetime') )
+    Plot all numpy arrays on the same figure. For each subsequent instrument/array, add a constant vertical shift to the array so that they plot above each other (the y axis now becomes meaningless).
+    However you managed to shift the arrays along the vertical axis (for example, each is shifted by a value of 1), then you can customize the y axis ticks ( ax.set_yticks([1,2,3,...,N]) ) and the corresponding tick labels ( ax.set_yticklabels( ['TP01', 'TP02', ..., 'TP10' ] ) )
+    """
+
+    if site == "WH01" or site == "WH02":
+        # data_path = "./data/" + site + "/"
+        data_path = "./data/" + site + "_3C_split/"
+        coords_path = (
+            "./data/" + site + "/txt_files/" + site + "_loc_corrected_geopsy.txt"
+        )
+    elif site == "WH03" or site == "WH04":
+        data_path = "./data/" + site + "/2025_WHY_MTS/"
+        coords_path = "./data/" + site + "/" + site + "_loc_corrected_geopsy.txt"
+
+    # read in coords file
+    df = pd.read_csv(coords_path, names=["instrument", "x", "y"], sep="\s+")
+
+    # assemble traces
+    traces = []
     for file in os.listdir(data_path):
-        if ".miniseed" in file:
+        if ".miniseed" in file or ".mseed" in file:
             stream = read(data_path + file)
-            if stream[0].stats["channel"] == "EPZ":
+            instrument = stream[0].stats["station"]
+            chan = stream[0].stats["channel"]
+            if chan == "EPZ" or chan == "HHZ":
+                # slice data
                 # 6:30 - 9:30
                 # 00:48 - 13:17
                 tr = stream[0]
-                tr = tr.trim(
-                    # longest section WH03
-                    # starttime=UTCDateTime(2025, 10, 23, 18, 00, 00),
-                    # endtime=UTCDateTime(2025, 10, 23, 21, 15, 00),
-                    # longest section WH04
-                    # starttime=UTCDateTime(2025, 10, 24, 1, 45, 0),
-                    # endtime=UTCDateTime(2025, 10, 24, 12, 30, 0),
-                    # quietest section WH04
-                    starttime=UTCDateTime(2025, 10, 24, 8, 0, 0),
-                    endtime=UTCDateTime(2025, 10, 24, 11, 0, 0),
+                if site == "WH03":
+                    tr = tr.trim(
+                        # longest section WH03
+                        starttime=UTCDateTime(2025, 10, 23, 19, 00, 00),
+                        endtime=UTCDateTime(2025, 10, 23, 21, 15, 00),
+                    )
+                elif site == "WH04":
+                    tr = tr.trim(
+                        # longest section WH04
+                        starttime=UTCDateTime(2025, 10, 24, 1, 45, 0),
+                        endtime=UTCDateTime(2025, 10, 24, 12, 30, 0),
+                        # quietest section WH04
+                        # starttime=UTCDateTime(2025, 10, 24, 8, 0, 0),
+                        # endtime=UTCDateTime(2025, 10, 24, 11, 0, 0),
+                    )
+
+                """
+                # set distance
+                dist = np.sqrt(
+                    df["x"][df["instrument"] == "SS_" + str(instrument)] ** 2
+                    + df["y"][df["instrument"] == "SS_" + str(instrument)] ** 2
                 )
-                plt.plot(tr)
-                # tr.plot()
-                # print(tr.stats)
-    plt.show()
+                tr.stats.distance = dist
+                """
+                traces.append(tr)
+
+    # combined = obspy.Stream(traces)
+
+    # create a stream with traces from all the instruments
+    # plot with obspy
+    # combined.plot()
+    # combined.plot(type="section")
+
+    # n_plots = 10
+    n_plots = 7
+    # n_plots = 8
+    # n_plots = len(traces)
+    for n in range(int(np.ceil(len(traces) / n_plots))):
+        fig, axes = plt.subplots(nrows=n_plots, sharex=True, sharey=True)
+        for ind, tr in enumerate(traces[n_plots * n : n_plots * (n + 1)]):
+            # np.arange(np.datetime64('2017-01-01'), np.datetime64('2017-01-08'))
+
+            times = pd.date_range(
+                np.datetime64(tr.stats["starttime"]),
+                np.datetime64(tr.stats["endtime"]),
+                periods=tr.stats["npts"],
+            ).to_pydatetime()
+            # xdata = tr.times()
+            # ydata = tr.data
+            axes[ind].plot(times, tr.data, c="black")
+            axes[ind].text(
+                0.01,
+                0.99,
+                tr.stats["station"],
+                fontsize=12,
+                ha="left",
+                va="top",
+                transform=axes[ind].transAxes,
+            )
+        # plt.ylim(-30, 30)
+        # plt.ylim(-1.2, 1.2)
+        plt.suptitle(site)
+        plt.show()
 
 
 def slice_noise_data():
-    # data_path = "./data/WH03/2025_WHY_MTS/"
-    data_path = "./data/WH04/2025_WHY_MTS/"
+    data_path = "./data/WH03/2025_WHY_MTS/"
+    # data_path = "./data/WH04/2025_WHY_MTS/"
     for file in os.listdir(data_path):
         if ".miniseed" in file:
             stream = read(data_path + file)
@@ -154,17 +230,17 @@ def slice_noise_data():
             tr = stream[0]
             tr = tr.trim(
                 # longest section WH03
-                # starttime=UTCDateTime(2025, 10, 23, 18, 00, 00),
-                # endtime=UTCDateTime(2025, 10, 23, 21, 15, 00),
+                starttime=UTCDateTime(2025, 10, 23, 19, 00, 00),
+                endtime=UTCDateTime(2025, 10, 23, 21, 15, 00),
                 # longest section WH04
                 # starttime=UTCDateTime(2025, 10, 24, 1, 45, 0),
                 # endtime=UTCDateTime(2025, 10, 24, 12, 30, 0),
                 # quietest section WH04
-                starttime=UTCDateTime(2025, 10, 24, 8, 0, 0),
-                endtime=UTCDateTime(2025, 10, 24, 11, 0, 0),
+                # starttime=UTCDateTime(2025, 10, 24, 8, 0, 0),
+                # endtime=UTCDateTime(2025, 10, 24, 11, 0, 0),
             )
 
-            output_fname = "./data/WH04/quietest_slice/" + file
+            output_fname = "./data/WH03/mseed_files/" + file
             sliced_tr = Stream(tr)
             sliced_tr.write(output_fname, format="MSEED")
 
@@ -193,17 +269,33 @@ def ambient_noise_data(site):
         print(st[0].stats)
 
 
-# MAPS
-
-
-# AMBIENT NOISE
-
-
-def plot_ambient_noise():
-    pass
-
-
 # ARRAY RESPONSE
+
+
+def plot_array_layout():
+    # plot array layout from relative positions
+    # label instruments and indicate the odd ones
+    site = "WH04"
+
+    data_path = "./data/" + site + "/" + site + "_loc_corrected_geopsy.txt"
+
+    df = pd.read_csv(data_path, names=["instrument", "x", "y"], sep="\s+")
+
+    for i, row in df.iterrows():
+        instrument = row["instrument"].replace("SS_", "")
+        if site == "WH03" and ((instrument == "25242") or (instrument == "25057")):
+            color = "red"
+        elif site == "WH04" and ((instrument == "24625") or (instrument == "25257")):
+            color = "red"
+        else:
+            color = "black"
+
+        plt.scatter(row["x"], row["y"], c=color)
+
+    plt.title(site)
+    plt.xlabel("x (m)")
+    plt.ylabel("y (m)")
+    plt.show()
 
 
 def plot_example_array_response():
@@ -264,11 +356,17 @@ def plot_example_array_response():
     plt.show()
 
 
-def plot_array_response():
+def plot_array_response(site):
     # https://docs.obspy.org/tutorial/code_snippets/array_response_function.html
     # https://geophydog.cool/post/array_response_function/#__31-the-geometry-effects__
 
-    data_path = "./data/WH01/txt_files/WH01_loc_corrected_geopsy.txt"
+    if site == "WH01" or site == "WH02":
+        data_path = (
+            "./data/" + site + "/txt_files/" + site + "_loc_corrected_geopsy.txt"
+        )
+    elif site == "WH03" or site == "WH04":
+        data_path = ""
+
     # generate array coordinates
     coords_df = pd.read_csv(
         data_path,
@@ -320,12 +418,14 @@ def plot_array_response():
     # transff = array_transff_freqslowness
 
     # plot
-    plt.subplot(2, 2, 1)
+    plt.subplot(1, 3, 1)
+    # plt.subplot(3, 1, 1)
     plt.scatter(coords_df["x"], coords_df["y"])
     plt.xlabel("x (m)")
     plt.ylabel("y (m)")
 
-    plt.subplot(2, 2, 2)
+    plt.subplot(1, 3, 2)
+    # plt.subplot(3, 1, 2)
     plt.pcolor(kx / 1000, ky / 1000, transff.T)
 
     # plt.xlim(kxmin / 1000, kxmax / 1000)
@@ -337,7 +437,8 @@ def plot_array_response():
     plt.ylabel("k_y (rad/m)")
     plt.colorbar(label="array response")
 
-    plt.subplot(2, 2, 3)
+    plt.subplot(1, 3, 3)
+    # plt.subplot(3, 1, 3)
     for yind in range(len(ky)):
         k_mag = np.sqrt(kx**2 * ky[yind] ** 2)
         inds = np.argsort(k_mag)
@@ -346,8 +447,8 @@ def plot_array_response():
         # )
         plt.plot(k_mag[inds] / 1000000, transff[inds, yind], c="grey", alpha=0.005)
 
-    plt.axvline(x=k_min / 1000)
-    plt.axvline(x=k_max / 1000)
+    # plt.axvline(x=k_min / 1000)
+    # plt.axvline(x=k_max / 1000)
 
     plt.axhline(y=0.5)
 
@@ -355,7 +456,7 @@ def plot_array_response():
     plt.ylabel("array response")
 
     plt.suptitle("WH01 array transfer function")
-    plt.tight_layout()
+    # plt.tight_layout()
     plt.show()
 
 
@@ -1023,15 +1124,15 @@ def plot_computed_dispersion_curve_curr(max_path):
     plt.grid(True)
 
     plt.title(
-        "\nPERIOD_COUNT=20, WINDOW_OVERLAP (%)=30, ANTI-TRIGGERING_ON_RAW_SIGNAL (y/n)=y"
-        "\nSTATISTIC_COUNT=500, FREQ_BAND_WIDTH=0.10"
-        "\nGRID_STEP (rad/m)= 0.005, GRID_SIZE (rad/m)=0.9, N_MAXIMA=1"
+        "\nPERIOD_COUNT=20, WINDOW_OVERLAP (%)=50, ANTI-TRIGGERING_ON_RAW_SIGNAL (y/n)=n"
+        "\nSTATISTIC_COUNT=0, FREQ_BAND_WIDTH=0.10"
+        "\nGRID_STEP (rad/m)= 0.005, GRID_SIZE (rad/m)=2.00, N_MAXIMA=0"
     )
     plt.tight_layout()
 
-    path = "./figures/WH04/1C/conventional-WH04-longest-test02.png"
-    # path = "./figures/WH04/2C/conventionaltransverse-WH04-longest-default02.png"
-    # path = "./figures/WH04/3C/rtbf-WH04-longest-test01.png"
+    path = "./figures/WH02/1C/conventional-WH02-default08.png"
+    # path = "./figures/WH04/2C/conventionaltransverse-WH04-longest-default03.png"
+    # path = "./figures/WH01/3C/rtbf-WH01-test01.png"
     plt.savefig(path)
     # plt.show()
 
@@ -1176,6 +1277,37 @@ def plot_multiple_dispersion_curves(max_paths):
     plt.tight_layout()
 
     # plt.savefig(path)
+    plt.show()
+
+
+def plot_curve_picking():
+    paths = [
+        # "./results/curves/curve-WH01-1C.csv",
+        # "./results/curves/curve-WH02-1C.csv",
+        # "./results/curves/curve-WH03-1C.csv",
+        "./results/curves/curve-WH04-1C.csv",
+        # "./results/curves/curve-WH01-2C.csv",
+        # "./results/curves/curve-WH02-2C.csv",
+        # "./results/curves/curve-WH03-2C.csv",
+        "./results/curves/curve-WH04-2C.csv",
+    ]
+
+    for p in paths:
+        df = pd.read_csv(p)
+
+        plt.errorbar(df["freqs"], df["vels"], yerr=df["stds"])
+
+    # df = pd.read_csv("./results/curves/curve-WH02-1C-2.csv")
+    # plt.errorbar(df["freqs"], df["vels"], yerr=df["stds"], c="blue")
+
+    plt.xlabel("frequency (Hz)")
+    plt.ylabel("velocity (m/s)")
+
+    plt.xscale("log")
+    plt.yscale("log")
+
+    # plt.legend(["WH01-1C", "WH02-1C", "WH03-1C", "WH04-1C"])
+    plt.legend(["WH04-1C", "WH04-2C"])
     plt.show()
 
 

@@ -7,7 +7,7 @@ import sys
 
 sys.path.append("./src/")
 
-from fk_processing.dispersion_curves import compute_dispersion_curve
+from processing.dispersion_curves import compute_dispersion_curve
 
 sys.path.append("../mcmc/src/")
 from inversion.data import FieldData

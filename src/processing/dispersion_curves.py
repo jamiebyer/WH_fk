@@ -163,6 +163,11 @@ def compute_dispersion_curve(df, err_thresh=None, freq_outliers=[], vel_outliers
     )
 
 
+def peak_picking():
+    # getting the mode within a range...
+    pass
+
+
 def setup_data(site):
     if site == "WH01":
         max_path = "./data/WH01/max_files/WH01_fine.max"
