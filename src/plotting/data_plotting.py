@@ -33,6 +33,44 @@ from obspy import read
 
 # DATA
 
+def read_max_file(max_file):
+    """
+    Plot geopsy ".max" file.
+    Gives time, frequency, slowness, azimuth, power, --
+    """
+    # read max file
+    # determine how many lines to skip when reading pd dataframe
+    with open(max_file, "r") as file:
+        # Read the first line
+        line = file.readline()
+        ind = 0
+        while line:
+            if "# BEGIN DATA" in line:
+                ind += 3
+                break
+            line = file.readline()  # Read the next line
+            ind += 1
+
+    # column names (slightly different for old max files)
+    names = [
+        "abs_time",
+        "frequency",
+        # "slowness",
+        "polarization",
+        "slowness",
+        # "",
+        "azimuth",
+        "el",
+        "no",
+        "power",
+        "valid",
+    ]
+
+    # read ".max" file as dataframe
+    df = pd.read_csv(max_file, skiprows=ind, sep="\s+", names=names)
+    return df
+
+
 
 def ambient_noise_data(site):
     stations = [
@@ -716,7 +754,7 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
     # read in site locations as png?
 
     # Create a figure
-    fig = plt.figure(figsize=(30, 15))
+    fig = plt.figure(figsize=(20, 10))
 
     # Define a GridSpec layout
     gs = GridSpec(4, 5, figure=fig)
@@ -751,7 +789,21 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
     hist_freqs = np.repeat(freqs, results_ds["data_pred"].shape[1])
     data_preds = results_ds["data_pred"].values.flatten() * 1000
 
-    ax2.hist2d(hist_freqs, data_preds, bins=n_bins, cmin=1, norm="log")
+    # histogram on log scale. 
+    # Use non-equal bin sizes, such that they look equal on log scale.
+    bin_freqs = np.flip(freqs)
+    logbins = np.logspace(np.log10(2), np.log10(13), len(freqs)+1)
+
+    # make freq bins from full grid
+    max_path = "./data/"+site+"/max_files/"+site+"_fine.max"
+    df_max = read_max_file(max_path)
+    freqs_grid = df_max["frequency"].values
+    vels_grid = 1 / df_max["slowness"].values
+
+    freq_bins = np.unique(freqs_grid)
+    vels_bins = np.unique(vels_grid)
+
+    ax2.hist2d(hist_freqs, data_preds, bins=[freq_bins, vels_bins], cmin=1, norm="log")
     # fig.colorbar(im, ax=ax, label="count")
     ax2.errorbar(
         freqs,
@@ -760,21 +812,9 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
         fmt="o",
         zorder=3,
         c="black",
-        markersize=1,
+        markersize=3,
         label="data_obs",
     )
-
-    ax2.set_xlim([1, 14.6])
-    ax2.set_ylim([200, 2000])
-
-    x_ticks = [1, 2, 3, 4, 5, 7, 10, 15]
-    y_ticks = [200, 300, 400, 600, 1000, 2000]
-
-    ax2.set_xticks(x_ticks)
-    ax2.set_yticks(y_ticks)
-
-    ax2.grid(which="major", alpha=0.75)
-    ax2.grid(which="minor", alpha=0.5)
 
 
     #1.1144065354855293 14.599243307112378
@@ -784,15 +824,27 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
 
     ax2.set_xscale("log")
     ax2.set_yscale("log")
-    ax2.set_xlabel("Frequency (Hz)")
-    ax2.set_ylabel("Velocity (m/s)")
+    ax2.set_xlabel("Frequency (Hz)", fontsize=20)
+    ax2.set_ylabel("Phase velocity (m/s)", fontsize=20)
+    ax2.tick_params(axis='both', which='major', labelsize=18)
 
     for axis in [ax2.xaxis, ax2.yaxis]:
         formatter = ScalarFormatter()
         formatter.set_scientific(False)
         axis.set_major_formatter(formatter)
 
-    # ax2.legend()
+
+    ax2.set_xlim([2, 14.6])
+    ax2.set_ylim([200, 2000])
+
+    x_ticks = [2, 3, 4, 5, 6, 7, 10, 15]
+    y_ticks = [200, 300, 400, 600, 1000, 2000]
+
+    ax2.set_xticks(x_ticks)
+    ax2.set_yticks(y_ticks)
+
+    ax2.grid(which="major", alpha=0.75)
+    ax2.grid(which="minor", alpha=0.5)
 
     # PLOT DEPTH PROFILE
     # use results_ds to get model params
@@ -802,7 +854,8 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
     depth_bounds = input_ds["param_bounds"][input_ds["depth_inds"]]
     depth_bins = (
         np.linspace(
-            np.min(depth_bounds[:, 0]),
+            # np.min(depth_bounds[:, 0]),
+            0,
             np.max(depth_bounds[:, 1]),
             n_bins,
         )
@@ -858,14 +911,22 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
     )
 
     ax3.set_xlim([200, 2000])
-    ax3.set_ylim([5, 125])
+    ax3.set_ylim([0, 125])
+
+    ax3.set_xticks(np.arange(200, 2001, 400))
+    ax3.set_xticks(np.arange(200, 2001, 50), minor=True)
+    ax3.set_yticks([0, 20, 40, 60, 80, 100, 120])
+    ax3.set_yticks(np.arange(0, 120, 5), minor=True)
+    ax3.grid()
+    ax3.grid(which="minor", alpha=0.3)
 
     ax3.set_ylim(ax3.get_ylim()[::-1])
 
     ax3.tick_params("y", labelleft=False)
     ax3.yaxis.tick_right()
 
-    ax3.set_xlabel("Velocity (m/s)")
+    ax3.set_xlabel("Shear velocity (m/s)", fontsize=20)
+    ax3.tick_params(axis='both', which='major', labelsize=18)
 
     # plot depth histogram
     for ind in range(input_ds.attrs["n_layers"]):
@@ -876,25 +937,30 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
             orientation="horizontal",
         )
 
-    ax4.set_xlabel("Probability")
-    ax4.set_ylabel("Depth (m)")
+    ax4.set_xlabel("Probability", fontsize=20)
+    ax4.set_ylabel("Depth (m)", fontsize=20)
     ax4.yaxis.set_label_position("right")
 
-    ax4.set_ylim([5, 125])
-    ax4.set_yticks([5, 20, 40, 60, 80, 100, 120])
+    ax4.set_ylim([0, 125])
+    ax4.set_xticks([0.0, 0.25, 0.5])
+    ax4.set_xticks(np.arange(0, 0.576, 0.025), minor=True)
+    ax4.set_yticks([0, 20, 40, 60, 80, 100, 120])
+    ax4.set_yticks(np.arange(0, 120, 5), minor=True)
+    ax4.tick_params(axis='both', which='major', labelsize=18)
     ax4.yaxis.tick_right()
+    ax4.grid()
+    ax4.grid(which="minor", alpha=0.3)
 
-
-    # ax4.set_xlim(ax4.get_xlim()[::-1])
     ax4.set_ylim(ax4.get_ylim()[::-1])
-    # plt.gca().invert_yaxis()
 
 
-    #ax1.text(1.03, 1600, "a)", fontsize=10)
-    #ax2.text(1.03, 1600, "b)", fontsize=10)
+    ax1.text(1500, 0.5, "a)", c="k", fontsize=20)
+    ax2.text(13, 1600, "b)", fontsize=20)
+    ax3.text(240, 122, "c)", fontsize=20)
+    ax4.text(0.03, 122, "d)", fontsize=20)
 
     if save:
-        plt.savefig("figures/" + out_filename + "/results-" + out_filename + ".png", dpi=600)
+        plt.savefig("figures/" + out_filename + "/results-" + out_filename + ".pdf", dpi=600)
     else:
         plt.show()
 
@@ -952,6 +1018,7 @@ def plot_vs30(
 
         vel_s = model_params[vel_s_inds]
 
+        # depth_boundary = 10
         depth_boundary = 30
         Vs30_list = []
         # for each layer
@@ -963,19 +1030,19 @@ def plot_vs30(
             
             # smallest positive number
             layer_ind = np.argmin(depth_diff)
-            depth_plotting[layer_ind] = 30
+            depth_plotting[layer_ind] = depth_boundary
 
             thickness = (
                 depth_plotting[1 : layer_ind + 1, step_ind]
                 - depth_plotting[:layer_ind, step_ind]
             )
 
-            Vs30 = 30 / np.sum(
+            Vs30 = depth_boundary / np.sum(
                 thickness[: layer_ind + 1] / vel_s[: layer_ind, step_ind]
             )
             Vs30_list.append(Vs30)
 
-        plt.hist(np.array(Vs30_list) * 1000, bins=100, density=True, alpha=0.5)
+        plt.hist(np.array(Vs30_list) * 1000, bins=30, density=True, alpha=0.5)
 
 
     classes = [
@@ -986,24 +1053,223 @@ def plot_vs30(
         ["E", "E (Soft soil)", 0, 0],
     ]
     for c, name, vert, loc in classes:
-        plt.text(loc, 0.15, name)
+        # plt.text(loc, 0.15, name)
         plt.axvline(vert, c="k", ls="-")
 
     # add percentage for classification
 
-    plt.xlabel("Vs 30 (m/s)")
-    # plt.ylabel("Counts")
+    plt.xlabel("Vs30 (m/s)")
+    # plt.xlabel("Vs10 (m/s)")
+    plt.ylabel("Probability")
 
     # plt.xlim([0, 760])
-    plt.xlim([0, 500])
+    plt.xlim([100, 450])
+
+    plt.xticks(np.arange(100, 450, 50))
+    plt.xticks(np.arange(100, 450, 10), minor=True)
+    plt.yticks(np.arange(0, 0.16, 0.04))
+    plt.yticks(np.arange(0, 0.16, 0.01), minor=True)
+    plt.grid()
+    plt.grid(which="minor", alpha=0.3)
 
     plt.tight_layout()
 
+    # plt.savefig("figures/vs10.png")
     plt.savefig("figures/vs30.png")
     
 
+
+
+def plot_vs30_subplots(
+    file_names
+):
+    """
+    Vs30 = sum(d_i)/sum(t_i) = 30/sum(d_i/v_i)
+    
+    Description	VS30 range (m/s)
+    Hard rock	1500
+    Rock	760-1500
+    Very dense soil and soft rock	360-760
+    Stiff soil	180-360
+    Soil with soft clay	<180
+    Site-specific analysis required	---
+    """
+    fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+
+    for file_name in file_names:
+        input_path = "./results/inversion/input-" + file_name + ".nc"
+        results_path = "./results/inversion/results-" + file_name + ".nc"
+
+        input_ds = xr.open_dataset(input_path)
+        results_ds = xr.open_dataset(results_path)
+
+        # n_burn = input_ds.attrs["n_burn"]
+        n_burn = int(len(results_ds["step"])/3)
+
+        # cut results by step
+        results_ds = results_ds.copy().isel(
+            step=slice(n_burn, len(results_ds["step"]))
+        )
+
+        # use results_ds to get model params
+        model_params = results_ds["model_params"].values
+
+        depth_bounds = input_ds["param_bounds"][input_ds["depth_inds"]]
+
+        depth_inds = input_ds["depth_inds"]
+        vel_s_inds = input_ds["vel_s_inds"]
+
+        n_steps = len(results_ds["step"])
+
+        depth = model_params[depth_inds] * 1000  # unit conversion to m
+        depth_plotting = np.concatenate(
+            (
+                np.zeros((1, n_steps)),
+                depth,
+                np.full((1, n_steps), np.max(depth_bounds[:, 1])) * 1000,  # unit conversion
+            ),
+            axis=0,
+        )
+
+        vel_s = model_params[vel_s_inds]
+
+        depth_boundary = 10
+        Vs10_list = []
+        # for each layer
+        # for each sample / step
+        for step_ind in range(n_steps):
+            # find first depth after 30 m
+            depth_diff = depth_plotting[:, step_ind] - depth_boundary
+            depth_diff[depth_diff < 0] = np.inf
+            
+            # smallest positive number
+            layer_ind = np.argmin(depth_diff)
+            depth_plotting[layer_ind] = depth_boundary
+
+            thickness = (
+                depth_plotting[1 : layer_ind + 1, step_ind]
+                - depth_plotting[:layer_ind, step_ind]
+            )
+
+            Vs10 = depth_boundary / np.sum(
+                thickness[: layer_ind + 1] / vel_s[: layer_ind, step_ind]
+            )
+            Vs10_list.append(Vs10)
+
+        ax[0].hist(np.array(Vs10_list) * 1000, bins=10, density=True, alpha=0.5)
+
+
+    for file_name in file_names:
+        input_path = "./results/inversion/input-" + file_name + ".nc"
+        results_path = "./results/inversion/results-" + file_name + ".nc"
+
+        input_ds = xr.open_dataset(input_path)
+        results_ds = xr.open_dataset(results_path)
+
+        # n_burn = input_ds.attrs["n_burn"]
+        n_burn = int(len(results_ds["step"])/3)
+
+        # cut results by step
+        results_ds = results_ds.copy().isel(
+            step=slice(n_burn, len(results_ds["step"]))
+        )
+
+        # use results_ds to get model params
+        model_params = results_ds["model_params"].values
+
+        depth_bounds = input_ds["param_bounds"][input_ds["depth_inds"]]
+
+        depth_inds = input_ds["depth_inds"]
+        vel_s_inds = input_ds["vel_s_inds"]
+
+        n_steps = len(results_ds["step"])
+
+        depth = model_params[depth_inds] * 1000  # unit conversion to m
+        depth_plotting = np.concatenate(
+            (
+                np.zeros((1, n_steps)),
+                depth,
+                np.full((1, n_steps), np.max(depth_bounds[:, 1])) * 1000,  # unit conversion
+            ),
+            axis=0,
+        )
+
+        vel_s = model_params[vel_s_inds]
+
+        depth_boundary = 30
+        Vs30_list = []
+        # for each layer
+        # for each sample / step
+        for step_ind in range(n_steps):
+            # find first depth after 30 m
+            depth_diff = depth_plotting[:, step_ind] - depth_boundary
+            depth_diff[depth_diff < 0] = np.inf
+            
+            # smallest positive number
+            layer_ind = np.argmin(depth_diff)
+            depth_plotting[layer_ind] = depth_boundary
+
+            thickness = (
+                depth_plotting[1 : layer_ind + 1, step_ind]
+                - depth_plotting[:layer_ind, step_ind]
+            )
+
+            Vs30 = depth_boundary / np.sum(
+                thickness[: layer_ind + 1] / vel_s[: layer_ind, step_ind]
+            )
+            Vs30_list.append(Vs30)
+
+        ax[1].hist(np.array(Vs30_list) * 1000, bins=10, density=True, alpha=0.5)
+
+    classes = [
+        # ["A", "Hard\nrock", 1500, 1550],
+        # ["B", "Rock", 760, 900],
+        ["C", "C (Very dense soil / soft rock)", 360, 380],
+        ["D", "D (Stiff soil)", 180, 230],
+        ["E", "E (Soft soil)", 0, 0],
+    ]
+    for c, name, vert, loc in classes:
+        # plt.text(loc, 0.15, name)
+        ax[0].axvline(vert, c="k", ls="-")
+        ax[1].axvline(vert, c="k", ls="-")
+
+    # add percentage for classification
+
+    ax[0].set_xlabel("Vs10 (m/s)")
+    ax[0].set_ylabel("Probability")
+
+    ax[1].set_xlabel("Vs30 (m/s)")
+    plt.setp(ax[1].get_yticklabels(), visible=False)
+    #ax[1].set_ylabel("Probability")
+
+    # plt.xlim([0, 760])
+    ax[0].set_xlim([100, 450])
+    ax[1].set_xlim([100, 450])
+
+    ax[0].set_xticks(np.arange(100, 450, 50))
+    ax[0].set_xticks(np.arange(100, 450, 10), minor=True)
+    ax[0].set_yticks(np.arange(0, 0.16, 0.04))
+    ax[0].set_yticks(np.arange(0, 0.16, 0.01), minor=True)
+    ax[0].grid(alpha=0.5)
+    ax[0].grid(which="minor", alpha=0.2)
+
+    ax[1].set_xticks(np.arange(100, 450, 50))
+    ax[1].set_xticks(np.arange(100, 450, 10), minor=True)
+    ax[1].set_yticks(np.arange(0, 0.16, 0.04))
+    ax[1].set_yticks(np.arange(0, 0.16, 0.01), minor=True)
+    ax[1].grid(alpha=0.5)
+    ax[1].grid(which="minor", alpha=0.2)
+
+    ax[0].text(110, 0.142, "a)")
+    ax[1].text(110, 0.142, "b)")
+
+    plt.tight_layout()
+
+    plt.savefig("figures/vs30_subplots.pdf")
+
+
 if __name__ == "__main__":
-    site = "WH02"
+    site = "WH01"
     if site == "WH01":
         file_name = "1762299408" # WH01
     elif site == "WH02":
@@ -1025,4 +1291,4 @@ if __name__ == "__main__":
 
     plot_full_results(input_ds, results_ds, site=site, n_bins=300, save=True, out_filename=file_name)
 
-    #plot_vs30(["1762299408", "1762299506"])
+    # plot_vs30_subplots(["1762299408", "1762299506"])
