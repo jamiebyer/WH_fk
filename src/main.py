@@ -45,30 +45,30 @@ def setup_model(n_layers, site):
             }
         elif n_layers == 2:
             proposal_width = {
-                "depth": [0.03, 0.05],
-                "vel_s": [0.03, 0.05, 0.10],
+                "depth": [0.05, 0.05],
+                "vel_s": [0.05, 0.05, 0.10],
             }  # fractional step size (multiplied by param bounds width)
 
             # set up data and inversion params
             bounds = {
-                "depth": np.array([[0.005, 0.100], [0.005, 0.200]]),  # km
+                "depth": np.array([[0.005, 0.050], [0.005, 0.200]]),  # km
                 "vel_s": np.array(
-                    [[0.100, 0.500], [0.200, 1.000], [0.750, 3.000]]
+                    [[0.100, 0.750], [0.200, 1.250], [0.500, 3.000]]
                 ),  # km/s
             }
         elif n_layers == 3:
             proposal_width = {
-                "depth": [0.03, 0.05, 0.05],
-                "vel_s": [0.03, 0.03, 0.05, 0.05],
+                "depth": [0.05, 0.05, 0.05],
+                "vel_s": [0.05, 0.05, 0.05, 0.05],
             }  # fractional step size (multiplied by param bounds width)
 
             # set up data and inversion params
             bounds = {
                 "depth": np.array(
-                    [[0.005, 0.010], [0.005, 0.150], [0.005, 0.250]]
+                    [[0.005, 0.050], [0.005, 0.250], [0.005, 0.400]]
                 ),  # km
                 "vel_s": np.array(
-                    [[0.100, 0.500], [0.200, 1.000], [0.200, 2.000], [1.500, 4.000]]
+                    [[0.100, 0.750], [0.200, 1.500], [0.200, 2.500], [1.500, 4.000]]
                 ),  # km/s
             }
         elif n_layers == 4:
@@ -80,7 +80,7 @@ def setup_model(n_layers, site):
             # set up data and inversion params
             bounds = {
                 "depth": np.array(
-                    [[0.005, 0.100], [0.005, 0.150], [0.005, 0.250], [0.100, 0.400]]
+                    [[0.005, 0.050], [0.005, 0.150], [0.005, 0.500], [0.100, 0.600]]
                 ),  # km
                 "vel_s": np.array(
                     [
@@ -92,41 +92,69 @@ def setup_model(n_layers, site):
                     ]
                 ),  # km/s
             }
-    elif site == "WH02":
-        if n_layers == 1:
+        elif n_layers == 5:
             proposal_width = {
-                "depth": 0.03,
-                "vel_s": [0.03, 0.15],
-            }  # fractional step size (multiplied by param bounds width)
-
-            # set up data and inversion params
-            bounds = {
-                "depth": np.array([0.001, 0.050]),  # km
-                "vel_s": np.array([[0.100, 0.500], [0.300, 1.500]]),  # km/s
-            }
-        elif n_layers == 2:
-            proposal_width = {
-                "depth": [0.03, 0.05],
-                "vel_s": [0.03, 0.05, 0.10],
-            }  # fractional step size (multiplied by param bounds width)
-
-            # set up data and inversion params
-            bounds = {
-                "depth": np.array([[0.005, 0.100], [0.005, 0.200]]),  # km
-                "vel_s": np.array(
-                    [[0.100, 0.500], [0.200, 1.000], [0.750, 3.000]]
-                ),  # km/s
-            }
-        elif n_layers == 3:
-            proposal_width = {
-                "depth": [0.03, 0.05, 0.05],
-                "vel_s": [0.03, 0.03, 0.05, 0.05],
+                "depth": 0.05,
+                "vel_s": 0.05,
             }  # fractional step size (multiplied by param bounds width)
 
             # set up data and inversion params
             bounds = {
                 "depth": np.array(
-                    [[0.005, 0.010], [0.005, 0.150], [0.005, 0.250]]
+                    [
+                        [0.005, 0.050],
+                        [0.005, 0.150],
+                        [0.005, 0.400],
+                        [0.100, 0.500],
+                        [0.100, 0.600],
+                    ]
+                ),  # km
+                "vel_s": np.array(
+                    [
+                        [0.100, 0.500],
+                        [0.200, 1.000],
+                        [0.200, 2.000],
+                        [1.500, 4.000],
+                        [1.500, 4.000],
+                        [1.500, 4.000],
+                    ]
+                ),  # km/s
+            }
+    elif site == "WH02":
+        if n_layers == 1:
+            proposal_width = {
+                "depth": 0.05,
+                "vel_s": [0.05, 0.15],
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array([0.001, 0.040]),  # km
+                "vel_s": np.array([[0.100, 0.750], [0.300, 1.500]]),  # km/s
+            }
+        elif n_layers == 2:
+            proposal_width = {
+                "depth": [0.05, 0.05],
+                "vel_s": [0.05, 0.05, 0.10],
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array([[0.005, 0.050], [0.005, 0.200]]),  # km
+                "vel_s": np.array(
+                    [[0.100, 0.750], [0.200, 1.000], [0.750, 3.000]]
+                ),  # km/s
+            }
+        elif n_layers == 3:
+            proposal_width = {
+                "depth": [0.05, 0.05, 0.05],
+                "vel_s": [0.05, 0.05, 0.05, 0.05],
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array(
+                    [[0.005, 0.075], [0.005, 0.125], [0.005, 0.400]]
                 ),  # km
                 "vel_s": np.array(
                     [[0.100, 0.500], [0.200, 1.000], [0.200, 2.000], [1.500, 4.000]]
@@ -141,12 +169,12 @@ def setup_model(n_layers, site):
             # set up data and inversion params
             bounds = {
                 "depth": np.array(
-                    [[0.005, 0.100], [0.005, 0.150], [0.005, 0.250], [0.100, 0.400]]
+                    [[0.005, 0.125], [0.005, 0.125], [0.005, 0.400], [0.100, 0.400]]
                 ),  # km
                 "vel_s": np.array(
                     [
-                        [0.100, 0.500],
-                        [0.200, 1.000],
+                        [0.100, 1.000],
+                        [0.200, 2.000],
                         [0.200, 2.000],
                         [1.500, 4.000],
                         [1.500, 4.000],
@@ -174,15 +202,15 @@ def basic_inversion(
     assumed noise used in likelihood calculation (percentage)
     """
 
-    data = setup_data(site)
+    data, _, _ = setup_data(site)
     model_params = setup_model(n_layers, site)
 
     inversion_init_kwargs = {
-        # "n_burn": 300000,
-        "n_burn": 200000,
+        "n_burn": 500000,
+        # "n_burn": 200000,
         "n_chunk": 500,
-        # "n_mcmc": 1000000,
-        "n_mcmc": 500000,
+        "n_mcmc": 1500000,
+        # "n_mcmc": 500000,
         "n_chains": 1,
         "beta_spacing_factor": 1.15,
         "individual_acceptance": True,
@@ -214,7 +242,7 @@ def run_inversion():
     sample_prior = False
     set_starting_model = False
     rotate = False
-    n_layers = 3
+    n_layers = 2
 
     inversion, model_params = basic_inversion(
         n_layers=n_layers,
@@ -260,3 +288,5 @@ if __name__ == "__main__":
     # well_hole_plotting("WH02")
 
     # plot_curve_picking()
+
+    # run_inversion()
