@@ -1137,6 +1137,97 @@ def plot_computed_dispersion_curve_curr(max_path):
     # plt.show()
 
 
+def plot_slowness(max_path, curve_path):
+    """
+    Plot dispersion curve from max file.
+    """
+    df_max = read_max_file(max_path)
+    freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
+        df_max,
+    )
+
+    slow_grid = np.log(1 / vels_grid)
+
+    freq_bins = np.logspace(
+        np.log10(np.min(freqs_grid)), np.log10(np.max(freqs_grid)), len(freqs) + 1
+    )
+    # vel_bins = np.logspace(
+    #     np.log10(np.min(vels_grid)), np.log10(np.max(vels_grid)), len(vel_meds) + 1
+    # )
+    # slowness_bins = np.logspace(
+    #     np.log10(np.min(1 / vels_grid)),
+    #     np.log10(np.max(1 / vels_grid)),
+    #     len(vel_meds) + 1,
+    # )
+    slowness_bins = np.linspace(np.min(slow_grid), np.max(slow_grid), len(freqs) + 1)
+
+    fig, ax1 = plt.subplots(figsize=(10, 5))
+
+    # plot frequency and velocity 2D histogram
+    # """
+    plt.hist2d(
+        freqs_grid,
+        np.log(1 / vels_grid),
+        bins=[
+            freq_bins,
+            slowness_bins,
+        ],
+        cmap="coolwarm",
+        norm=LogNorm(),
+    )
+    # """
+
+    df = pd.read_csv(curve_path)
+
+    percent_err = 100 * (df["stds"] / df["vels"])
+    curve = np.log(1 / df["vels"])
+    new_err = np.abs((percent_err / 100) * curve)
+
+    plt.errorbar(
+        df["freqs"],
+        curve,
+        # yerr=new_err,
+        marker="o",
+        markersize=2,
+        c="black",
+    )
+
+    plt.xscale("log")
+    # plt.yscale("log")
+    # plt.ylim([100, 2200])
+    # plt.ylim([50, 2200])
+    # plt.ylim([0, 0.0220])
+
+    plt.xlabel("frequency (Hz)")
+    plt.ylabel("ln(slowness)")
+
+    # plt.colorbar(label="counts")
+
+    # plot dispersion curve with errors
+    # plt.plot(freqs_curve, vels_curve)
+
+    for axis in [ax1.xaxis, ax1.yaxis]:
+        formatter = ScalarFormatter()
+        formatter.set_scientific(False)
+        axis.set_major_formatter(formatter)
+
+    plt.grid(True)
+
+    # plt.title(
+    #    "\nPERIOD_COUNT=20, WINDOW_OVERLAP (%)=50, ANTI-TRIGGERING_ON_RAW_SIGNAL (y/n)=n"
+    #    "\nSTATISTIC_COUNT=0, FREQ_BAND_WIDTH=0.10"
+    #    "\nGRID_STEP (rad/m)= 0.005, GRID_SIZE (rad/m)=2.00, N_MAXIMA=0"
+    # )
+    plt.tight_layout()
+
+    path = "./figures/WH01/1C/slowness/conventional-WH01-log.png"
+    # path = "./figures/WH02/1C/conventional-WH02-default08.png"
+    # path = "./figures/WH04/2C/conventionaltransverse-WH04-longest-default03.png"
+    # path = "./figures/WH01/3C/rtbf-WH01-test01.png"
+    plt.savefig(path)
+    # plt.show()
+
+
 def plot_double_dispersion_curves(max_paths):
     fig, axes = plt.subplots(ncols=2, sharey=True, figsize=(10, 5))
 
@@ -1303,6 +1394,8 @@ def plot_curve_picking():
     plt.xlabel("frequency (Hz)")
     plt.ylabel("velocity (m/s)")
 
+    plt.xlim([1, 50])
+    plt.ylim([50, 2200])
     plt.xscale("log")
     plt.yscale("log")
 

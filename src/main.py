@@ -232,10 +232,14 @@ def run_inversion():
 
 if __name__ == "__main__":
 
-    max_path = "./results/fk/WH02/1C/conventional-WH02-default08.max"
+    # max_path = "./results/fk/WH04/1C/conventional-WH04-longest-default08.max"
     # max_path = "./results/fk/WH04/2C/conventionaltransverse-WH04-longest-default03.max"
     # max_path = "./results/WH01/3C/rtbf-WH01-test01.max"
     # plot_computed_dispersion_curve_curr(max_path)
+
+    max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
+    curve_path = "./results/curves/curve-WH01-1C.csv"
+    plot_slowness(max_path, curve_path)
     # [plot_dispersion_curve_frequency(max_path, freq=f) for f in np.arange(2, 12, 0.5)]
     # plot_dispersion_curve_frequency(max_path, freq=6)
 
@@ -255,4 +259,4 @@ if __name__ == "__main__":
 
     # well_hole_plotting("WH02")
 
-    plot_curve_picking()
+    # plot_curve_picking()
