@@ -22,6 +22,13 @@ app.layout = [
     dcc.Dropdown(["velocity", "slowness"], "velocity", id="figure_type"),
     dcc.Checklist(
         options=[
+            {"label": "transverse", "value": True},
+        ],
+        value=[],
+        id="transverse_comp",
+    ),
+    dcc.Checklist(
+        options=[
             {"label": "ln y-axis", "value": True},
         ],
         value=[True],
@@ -68,26 +75,17 @@ app.layout = [
     Output(component_id="plt_figure", component_property="src"),
     Input(component_id="site_selection", component_property="value"),
     Input(component_id="figure_type", component_property="value"),
+    Input(component_id="transverse_comp", component_property="value"),
     Input(component_id="ln_y_axis", component_property="value"),
     Input(component_id="n_bins", component_property="value"),
     Input(component_id="freq_slider", component_property="value"),
 )
-def update_dispersion_curve(site, figure_type, ln_y_axis, n_bins, freq):
+def update_dispersion_curve(site, figure_type, transverse_comp, ln_y_axis, n_bins, freq):
     # Build the matplotlib figure
     fig = plt.figure(figsize=(14, 5))
 
-    if site == "WH01":
-        max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
-        curve_path = "./results/curves/curve-WH01-1C.csv"
-    elif site == "WH02":
-        max_path = "./results/fk/final/conventional-WH02_3C_split-default08.max"
-        curve_path = "./results/curves/curve-WH02-1C.csv"
-    elif site == "WH03":
-        max_path = "./results/fk/final/conventional-WH03-default08.max"
-        curve_path = "./results/curves/curve-WH03-1C.csv"
-    elif site == "WH04":
-        max_path = "./results/fk/final/conventional-WH04-default08.max"
-        curve_path = "./results/curves/curve-WH04-1C.csv"
+    
+    max_path, curve_path = get_path(site, transverse_comp)
 
     df_max = read_max_file(max_path)
     freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
@@ -105,22 +103,19 @@ def update_dispersion_curve(site, figure_type, ln_y_axis, n_bins, freq):
     freq_bins = np.logspace(
         np.log10(np.min(freqs_grid)), np.log10(np.max(freqs_grid)), len(freqs) + 1
     )
-    slowness_bins = np.linspace(np.min(y_grid), np.max(y_grid), n_bins)
+    y_bins = np.linspace(np.min(y_grid), np.max(y_grid), n_bins)
 
     plt.hist2d(
         freqs_grid,
         y_grid,
         bins=[
             freq_bins,
-            slowness_bins,
+            y_bins,
         ],
         norm=LogNorm(),
     )
 
     df = pd.read_csv(curve_path)
-
-    # percent_err = 100 * (df["stds"] / df["vels"])
-    # new_err = np.abs((percent_err / 100) * curve)
 
     if figure_type == "velocity":
         y_curve = df["vels"]
@@ -130,10 +125,17 @@ def update_dispersion_curve(site, figure_type, ln_y_axis, n_bins, freq):
     if np.sum(ln_y_axis) == 1:
         y_curve = np.log(y_curve)
 
+    y_err = None
+    if figure_type == "velocity" and np.sum(ln_y_axis) == 0:
+        y_err = df["stds"]
+        # percent_err = 100 * (df["stds"] / df["vels"])
+        # y_err = (percent_err / 100) * y_curve
+        # y_err = np.abs(y_err)
+
     plt.errorbar(
         df["freqs"],
         y_curve,
-        # yerr=new_err,
+        yerr=y_err,
         marker="o",
         markersize=2,
         c="black",
@@ -169,27 +171,18 @@ def update_dispersion_curve(site, figure_type, ln_y_axis, n_bins, freq):
     Output(component_id="frequency_dist_figure", component_property="figure"),
     Input(component_id="site_selection", component_property="value"),
     Input(component_id="figure_type", component_property="value"),
+    Input(component_id="transverse_comp", component_property="value"),
     Input(component_id="ln_y_axis", component_property="value"),
     Input(component_id="n_bins", component_property="value"),
     Input(component_id="freq_slider", component_property="value"),
 )
-def update_dispersion_curve(site, figure_type, ln_y_axis, n_bins, freq):
+def update_dispersion_curve(site, figure_type, transverse_comp, ln_y_axis, n_bins, freq):
     """
     Update disperion curve 2D histogram figure.
     Vertical line at selected frequency.
     """
-    if site == "WH01":
-        max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
-        curve_path = "./results/curves/curve-WH01-1C.csv"
-    elif site == "WH02":
-        max_path = "./results/fk/final/conventional-WH02_3C_split-default08.max"
-        curve_path = "./results/curves/curve-WH02-1C.csv"
-    elif site == "WH03":
-        max_path = "./results/fk/final/conventional-WH03-default08.max"
-        curve_path = "./results/curves/curve-WH03-1C.csv"
-    elif site == "WH04":
-        max_path = "./results/fk/final/conventional-WH04-default08.max"
-        curve_path = "./results/curves/curve-WH04-1C.csv"
+    
+    max_path, curve_path = get_path(site, transverse_comp)
 
     df_max = read_max_file(max_path)
     freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
@@ -268,12 +261,11 @@ def update_dispersion_curve(site, figure_type, ln_y_axis, n_bins, freq):
     # disp_fig.update_xaxes(title_text="frequency (Hz)")
     # disp_fig.update_yaxes(title_text=y_label)
 
-    print(freq, np.sum(np.isclose(freqs_grid, 10**freq)))
     freq_fig = go.Figure(
         data=[
             go.Histogram(
                 x=y_grid[np.isclose(freqs_grid, 10**freq)],
-                histnorm="probability",
+                # histnorm="probability",
                 # nbinsx=n_bins,
                 xbins=dict(
                     start=min_y, end=max_y, size=step_y
@@ -282,15 +274,30 @@ def update_dispersion_curve(site, figure_type, ln_y_axis, n_bins, freq):
         ]
     )
 
-    x = y_curve[
-        np.isclose(df["freqs"], np.repeat(10**freq, len(df["freqs"])))
-    ].values[0]
-    print(x)
-    freq_fig.add_vline(
-        x=x,
-        fillcolor="red",
-        opacity=0.5,
-    )
+    inds = np.isclose(df["freqs"], np.repeat(10**freq, len(df["freqs"])))
+    x = y_curve[inds].values
+    if len(x) == 1:
+        freq_fig.add_vline(
+            x=x[0],
+            fillcolor="red",
+            opacity=0.5,
+        )
+    
+        if figure_type == "velocity" and np.sum(ln_y_axis) == 0:
+            err = df["stds"][inds]
+            print(err)
+            err = err.values[0]
+            freq_fig.add_vline(
+                x=x[0] - err,
+                fillcolor="black",
+                opacity=0.5,
+            )
+            freq_fig.add_vline(
+                x=x[0] + err,
+                fillcolor="black",
+                opacity=0.5,
+            )
+
     freq_fig.update_xaxes(range=[min_y, max_y])
     freq_fig.update_xaxes(title_text=y_label)
 
@@ -303,26 +310,16 @@ def update_dispersion_curve(site, figure_type, ln_y_axis, n_bins, freq):
     Output(component_id="freq_slider", component_property="step"),
     Output(component_id="freq_slider", component_property="marks"),
     Input(component_id="site_selection", component_property="value"),
+    Input(component_id="transverse_comp", component_property="value"),
 )
-def update_frequency_slider(site):
+def update_frequency_slider(site, transverse_comp):
     """
     Get frequency options from site selection.
 
     (If plotting dispersion curve, only show frequencies from dispersion curve.
      Otherwise, plot all frequencies)
     """
-    if site == "WH01":
-        max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
-        curve_path = "./results/curves/curve-WH01-1C.csv"
-    elif site == "WH02":
-        max_path = "./results/fk/final/conventional-WH02_3C_split-default08.max"
-        curve_path = "./results/curves/curve-WH02-1C.csv"
-    elif site == "WH03":
-        max_path = "./results/fk/final/conventional-WH03-default08.max"
-        curve_path = "./results/curves/curve-WH03-1C.csv"
-    elif site == "WH04":
-        max_path = "./results/fk/final/conventional-WH04-default08.max"
-        curve_path = "./results/curves/curve-WH04-1C.csv"
+    max_path, curve_path = get_path(site, transverse_comp)
 
     df_max = read_max_file(max_path)
     freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
@@ -348,6 +345,39 @@ def update_frequency_slider(site):
     step = (max_freq - min_freq) / (len(df["freqs"]) - 1)
 
     return min_freq, max_freq, step, marks
+
+
+def get_path(site, transverse_comp):
+    if site == "WH01":
+        if np.sum(transverse_comp) == 1:
+            max_path = "./results/fk/final/conventionaltransverse-WH01-default04.max"
+            curve_path = "./results/curves/curve-WH01-2C.csv"
+        else:
+            max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
+            curve_path = "./results/curves/curve-WH01-1C.csv"
+    elif site == "WH02":
+        if np.sum(transverse_comp) == 1:
+            max_path = "./results/fk/final/conventionaltransverse-WH02-default04.max"
+            curve_path = "./results/curves/curve-WH02-2C.csv"
+        else:
+            max_path = "./results/fk/final/conventional-WH02_3C_split-default08.max"
+            curve_path = "./results/curves/curve-WH02-1C.csv"
+    elif site == "WH03":
+        if np.sum(transverse_comp) == 1:
+            max_path = "./results/fk/final/conventionaltransverse-WH03-sliced-default04.max"
+            curve_path = "./results/curves/curve-WH03-2C.csv"
+        else:
+            max_path = "./results/fk/final/conventional-WH03-default08.max"
+            curve_path = "./results/curves/curve-WH03-1C.csv"
+    elif site == "WH04":
+        if np.sum(transverse_comp) == 1:
+            max_path = "./results/fk/final/conventionaltransverse-WH04-longest-default04.max"
+            curve_path = "./results/curves/curve-WH04-2C.csv"
+        else:
+            max_path = "./results/fk/final/conventional-WH04-default08.max"
+            curve_path = "./results/curves/curve-WH04-1C.csv"
+    
+    return max_path, curve_path
 
 
 def read_max_file(max_file):
@@ -383,7 +413,8 @@ def read_max_file(max_file):
     ]
 
     # read ".max" file as dataframe
-    df = pd.read_csv(max_file, skiprows=ind, sep="\s+", names=names)
+    # df = pd.read_csv(max_file, skiprows=ind, sep="\s+", names=names)
+    df = pd.read_csv(max_file, skiprows=ind, sep="\\s", names=names)
     return df
 
 

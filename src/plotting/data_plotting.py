@@ -1652,8 +1652,8 @@ def plot_slowness(max_path, curve_path):
     # path = "./figures/WH02/1C/conventional-WH02-default08.png"
     # path = "./figures/WH04/2C/conventionaltransverse-WH04-longest-default03.png"
     # path = "./figures/WH01/3C/rtbf-WH01-test01.png"
-    plt.savefig(path)
-    # plt.show()
+    # plt.savefig(path)
+    plt.show()
 
 
 def plot_double_dispersion_curves(max_paths):
@@ -1804,10 +1804,10 @@ def plot_curve_picking():
         # "./results/curves/curve-WH01-1C.csv",
         # "./results/curves/curve-WH02-1C.csv",
         # "./results/curves/curve-WH03-1C.csv",
-        "./results/curves/curve-WH04-1C.csv",
-        # "./results/curves/curve-WH01-2C.csv",
-        # "./results/curves/curve-WH02-2C.csv",
-        # "./results/curves/curve-WH03-2C.csv",
+        # "./results/curves/curve-WH04-1C.csv",
+        "./results/curves/curve-WH01-2C.csv",
+        "./results/curves/curve-WH02-2C.csv",
+        "./results/curves/curve-WH03-2C.csv",
         "./results/curves/curve-WH04-2C.csv",
     ]
 
@@ -1828,7 +1828,8 @@ def plot_curve_picking():
     plt.yscale("log")
 
     # plt.legend(["WH01-1C", "WH02-1C", "WH03-1C", "WH04-1C"])
-    plt.legend(["WH04-1C", "WH04-2C"])
+    plt.legend(["WH01-2C", "WH02-2C", "WH03-2C", "WH04-2C"])
+    # plt.legend(["WH04-1C", "WH04-2C"])
     plt.show()
 
 

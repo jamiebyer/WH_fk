@@ -1,29 +1,20 @@
-from plotting.inversion_plotting import *
-from plotting.data_plotting import *
-from processing.dispersion_curves import *
-
 import asyncio
 import numpy as np
+import xarray as xr
 
 import sys
 
 sys.path.append("../mcmc/src/")
-# sys.path.append("./src/")
 from inversion.data import SyntheticData, FieldData
 from inversion.inversion import Inversion
-
-import numpy as np
-
 from inversion.model_params import DispersionCurveParams
-from inversion.inversion import Inversion
 
-# from plotting.plot_dispersion_curve import *
-
+sys.path.append("./src/")
 from plotting.well_holes import *
+from plotting.inversion_plotting import *
+from plotting.data_plotting import *
+from processing.dispersion_curves import *
 
-from processing.dispersion_curves import compute_dispersion_curve
-
-import xarray as xr
 
 
 np.random.seed(0)
@@ -267,7 +258,7 @@ if __name__ == "__main__":
 
     max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
     curve_path = "./results/curves/curve-WH01-1C.csv"
-    plot_slowness(max_path, curve_path)
+    # plot_slowness(max_path, curve_path)
     # [plot_dispersion_curve_frequency(max_path, freq=f) for f in np.arange(2, 12, 0.5)]
     # plot_dispersion_curve_frequency(max_path, freq=6)
 
@@ -287,6 +278,6 @@ if __name__ == "__main__":
 
     # well_hole_plotting("WH02")
 
-    # plot_curve_picking()
+    plot_curve_picking()
 
     # run_inversion()
