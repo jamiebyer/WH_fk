@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import base64
 from io import BytesIO
 import numpy as np
+import scipy.stats as stats
 
 from matplotlib.colors import LogNorm
 
@@ -70,7 +71,6 @@ app.layout = [
 ]
 
 
-# """
 @app.callback(
     Output(component_id="plt_figure", component_property="src"),
     Input(component_id="site_selection", component_property="value"),
@@ -80,12 +80,13 @@ app.layout = [
     Input(component_id="n_bins", component_property="value"),
     Input(component_id="freq_slider", component_property="value"),
 )
-def update_dispersion_curve(site, figure_type, transverse_comp, ln_y_axis, n_bins, freq):
+def update_dispersion_curve(
+    site, figure_type, transverse_comp, ln_y_axis, n_bins, freq
+):
     # Build the matplotlib figure
     fig = plt.figure(figsize=(14, 5))
 
-    
-    max_path, curve_path = get_path(site, transverse_comp)
+    max_path, curve_path = get_path(site, transverse_comp, figure_type, ln_y_axis)
 
     df_max = read_max_file(max_path)
     freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
@@ -116,21 +117,23 @@ def update_dispersion_curve(site, figure_type, transverse_comp, ln_y_axis, n_bin
     )
 
     df = pd.read_csv(curve_path)
+    y_curve = df["vels"]
 
-    if figure_type == "velocity":
-        y_curve = df["vels"]
-    elif figure_type == "slowness":
-        y_curve = 1 / df["vels"]
+    # if figure_type == "velocity":
+    #     y_curve = df["vels"]
+    # elif figure_type == "slowness":
+    #     y_curve = 1 / df["vels"]
 
-    if np.sum(ln_y_axis) == 1:
+    if np.sum(ln_y_axis) == 1 and figure_type == "velocity":
         y_curve = np.log(y_curve)
+    elif np.sum(ln_y_axis) == 0 and figure_type == "slowness":
+        y_curve = np.exp(y_curve)
 
     y_err = None
-    if figure_type == "velocity" and np.sum(ln_y_axis) == 0:
+    if (np.sum(ln_y_axis) == 0 and figure_type == "velocity") or (
+        np.sum(ln_y_axis) == 1 and figure_type == "slowness"
+    ):
         y_err = df["stds"]
-        # percent_err = 100 * (df["stds"] / df["vels"])
-        # y_err = (percent_err / 100) * y_curve
-        # y_err = np.abs(y_err)
 
     plt.errorbar(
         df["freqs"],
@@ -176,13 +179,15 @@ def update_dispersion_curve(site, figure_type, transverse_comp, ln_y_axis, n_bin
     Input(component_id="n_bins", component_property="value"),
     Input(component_id="freq_slider", component_property="value"),
 )
-def update_dispersion_curve(site, figure_type, transverse_comp, ln_y_axis, n_bins, freq):
+def update_dispersion_curve(
+    site, figure_type, transverse_comp, ln_y_axis, n_bins, freq
+):
     """
     Update disperion curve 2D histogram figure.
     Vertical line at selected frequency.
     """
-    
-    max_path, curve_path = get_path(site, transverse_comp)
+
+    max_path, curve_path = get_path(site, transverse_comp, figure_type, ln_y_axis)
 
     df_max = read_max_file(max_path)
     freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
@@ -227,18 +232,13 @@ def update_dispersion_curve(site, figure_type, transverse_comp, ln_y_axis, n_bin
     """
     # plot dispersion curve
     df = pd.read_csv(curve_path)
-    curve = df["vels"]
+    y_curve = df["vels"]
 
-    if figure_type == "velocity":
-        y_curve = curve
-    elif figure_type == "slowness":
-        y_curve = 1 / curve
-
-    if np.sum(ln_y_axis) == 1:
+    if figure_type == "velocity" and np.sum(ln_y_axis) == 1:
         y_curve = np.log(y_curve)
+    elif figure_type == "slowness" and np.sum(ln_y_axis) == 0:
+        y_curve = np.exp(y_curve)
 
-    # percent_err = 100 * (df["stds"] / df["vels"])
-    # new_err = np.abs((percent_err / 100) * curve)
     """
     disp_fig.add_trace(
         go.Scatter(
@@ -265,7 +265,7 @@ def update_dispersion_curve(site, figure_type, transverse_comp, ln_y_axis, n_bin
         data=[
             go.Histogram(
                 x=y_grid[np.isclose(freqs_grid, 10**freq)],
-                # histnorm="probability",
+                histnorm="probability",
                 # nbinsx=n_bins,
                 xbins=dict(
                     start=min_y, end=max_y, size=step_y
@@ -282,11 +282,13 @@ def update_dispersion_curve(site, figure_type, transverse_comp, ln_y_axis, n_bin
             fillcolor="red",
             opacity=0.5,
         )
-    
-        if figure_type == "velocity" and np.sum(ln_y_axis) == 0:
+
+        if (np.sum(ln_y_axis) == 0 and figure_type == "velocity") or (
+            np.sum(ln_y_axis) == 1 and figure_type == "slowness"
+        ):
             err = df["stds"][inds]
-            print(err)
             err = err.values[0]
+
             freq_fig.add_vline(
                 x=x[0] - err,
                 fillcolor="black",
@@ -296,6 +298,18 @@ def update_dispersion_curve(site, figure_type, transverse_comp, ln_y_axis, n_bin
                 x=x[0] + err,
                 fillcolor="black",
                 opacity=0.5,
+            )
+
+            mu = x[0]
+            variance = err
+            sigma = np.sqrt(variance)
+            x = np.linspace(mu - 3 * sigma, mu + 3 * sigma, 100)
+            freq_fig.add_trace(
+                go.Scatter(
+                    x=x,
+                    y=stats.norm.pdf(x, mu, sigma),
+                    mode="lines",
+                )
             )
 
     freq_fig.update_xaxes(range=[min_y, max_y])
@@ -311,15 +325,17 @@ def update_dispersion_curve(site, figure_type, transverse_comp, ln_y_axis, n_bin
     Output(component_id="freq_slider", component_property="marks"),
     Input(component_id="site_selection", component_property="value"),
     Input(component_id="transverse_comp", component_property="value"),
+    Input(component_id="figure_type", component_property="value"),
+    Input(component_id="ln_y_axis", component_property="value"),
 )
-def update_frequency_slider(site, transverse_comp):
+def update_frequency_slider(site, transverse_comp, figure_type, ln_y_axis):
     """
     Get frequency options from site selection.
 
     (If plotting dispersion curve, only show frequencies from dispersion curve.
      Otherwise, plot all frequencies)
     """
-    max_path, curve_path = get_path(site, transverse_comp)
+    max_path, curve_path = get_path(site, transverse_comp, figure_type, ln_y_axis)
 
     df_max = read_max_file(max_path)
     freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
@@ -347,36 +363,65 @@ def update_frequency_slider(site, transverse_comp):
     return min_freq, max_freq, step, marks
 
 
-def get_path(site, transverse_comp):
+def get_path(site, transverse_comp, figure_type, ln_y_axis):
     if site == "WH01":
         if np.sum(transverse_comp) == 1:
             max_path = "./results/fk/final/conventionaltransverse-WH01-default04.max"
-            curve_path = "./results/curves/curve-WH01-2C.csv"
+            if figure_type == "velocity":
+                curve_path = "./results/curves/curve-WH01-2C.csv"
+            elif figure_type == "slowness":
+                # if np.sum(ln_y_axis) == 1:
+                curve_path = "./results/curves/curve-WH01-transverse-slowness-True.csv"
         else:
             max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
-            curve_path = "./results/curves/curve-WH01-1C.csv"
+            if figure_type == "velocity":
+                curve_path = "./results/curves/curve-WH01-1C.csv"
+            elif figure_type == "slowness":
+                curve_path = "./results/curves/curve-WH01-vertical-slowness-True.csv"
     elif site == "WH02":
         if np.sum(transverse_comp) == 1:
             max_path = "./results/fk/final/conventionaltransverse-WH02-default04.max"
-            curve_path = "./results/curves/curve-WH02-2C.csv"
+            if figure_type == "velocity":
+                curve_path = "./results/curves/curve-WH02-2C.csv"
+            elif figure_type == "slowness":
+                curve_path = "./results/curves/curve-WH02-transverse-slowness-True.csv"
         else:
             max_path = "./results/fk/final/conventional-WH02_3C_split-default08.max"
-            curve_path = "./results/curves/curve-WH02-1C.csv"
+            if figure_type == "velocity":
+                curve_path = "./results/curves/curve-WH02-1C.csv"
+            elif figure_type == "slowness":
+                curve_path = "./results/curves/curve-WH02-vertical-slowness-True.csv"
     elif site == "WH03":
         if np.sum(transverse_comp) == 1:
-            max_path = "./results/fk/final/conventionaltransverse-WH03-sliced-default04.max"
-            curve_path = "./results/curves/curve-WH03-2C.csv"
+            max_path = (
+                "./results/fk/final/conventionaltransverse-WH03-sliced-default04.max"
+            )
+            if figure_type == "velocity":
+                curve_path = "./results/curves/curve-WH03-2C.csv"
+            elif figure_type == "slowness":
+                curve_path = "./results/curves/curve-WH03-transverse-slowness-True.csv"
         else:
             max_path = "./results/fk/final/conventional-WH03-default08.max"
-            curve_path = "./results/curves/curve-WH03-1C.csv"
+            if figure_type == "velocity":
+                curve_path = "./results/curves/curve-WH03-1C.csv"
+            elif figure_type == "slowness":
+                curve_path = "./results/curves/curve-WH03-vertical-slowness-True.csv"
     elif site == "WH04":
         if np.sum(transverse_comp) == 1:
-            max_path = "./results/fk/final/conventionaltransverse-WH04-longest-default04.max"
-            curve_path = "./results/curves/curve-WH04-2C.csv"
+            max_path = (
+                "./results/fk/final/conventionaltransverse-WH04-longest-default04.max"
+            )
+            if figure_type == "velocity":
+                curve_path = "./results/curves/curve-WH04-2C.csv"
+            elif figure_type == "slowness":
+                curve_path = "./results/curves/curve-WH04-transverse-slowness-True.csv"
         else:
             max_path = "./results/fk/final/conventional-WH04-default08.max"
-            curve_path = "./results/curves/curve-WH04-1C.csv"
-    
+            if figure_type == "velocity":
+                curve_path = "./results/curves/curve-WH04-1C.csv"
+            elif figure_type == "slowness":
+                curve_path = "./results/curves/curve-WH04-vertical-slowness-True.csv"
+
     return max_path, curve_path
 
 

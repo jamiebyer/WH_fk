@@ -171,7 +171,7 @@ class CurvePicking:
         # update figure data selection opacity / outline data
 
         self.scatter.set_offsets(curve)
-        self.adjustErrbarxy(
+        self.update_error_bar(
             self.errorbar, np.array(new_f), np.array(new_v), np.array(new_e)
         )
 
@@ -187,7 +187,7 @@ class CurvePicking:
 
         self.canvas.draw_idle()
 
-    def disconnect(self, site, component, y_domain):
+    def disconnect(self, site, component, y_domain, ln_data):
         # save df of dispersion curve to file
         df = pd.DataFrame(
             {
@@ -196,9 +196,22 @@ class CurvePicking:
                 "stds": self.plot_stds,
             }
         )
-        df.to_csv("./results/curves/curve-"+site+"-"+component+ "-" +y_domain+".csv")
+        df.to_csv(
+            "./results/curves/curve-" + site + "-" + component + "-" + y_domain + "-" + str(ln_data) ".csv"
+        )
 
-        with open("./results/curves/curve-"+site+"-" + component + "-" + y_domain+".txt", "w") as f:
+        with open(
+            "./results/curves/curve-"
+            + site
+            + "-"
+            + component
+            + "-"
+            + y_domain
+            + "-"
+            + str(ln_data)
+            + ".txt",
+            "w",
+        ) as f:
             f.write(str(self.verts))
 
         self.poly.disconnect_events()
@@ -209,12 +222,16 @@ class CurvePicking:
             if component == "vertical":
                 max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
             elif component == "transverse":
-                max_path = "./results/fk/final/conventionaltransverse-WH01-default04.max"
+                max_path = (
+                    "./results/fk/final/conventionaltransverse-WH01-default04.max"
+                )
         elif site == "WH02":
             if component == "vertical":
                 max_path = "./results/fk/final/conventional-WH02_3C_split-default08.max"
             elif component == "transverse":
-                max_path = "./results/fk/final/conventionaltransverse-WH02-default04.max"
+                max_path = (
+                    "./results/fk/final/conventionaltransverse-WH02-default04.max"
+                )
         elif site == "WH03":
             if component == "vertical":
                 max_path = "./results/fk/final/conventional-WH03-default08.max"
@@ -225,7 +242,7 @@ class CurvePicking:
                 max_path = "./results/fk/final/conventional-WH04-longest-default08.max"
             elif component == "transverse":
                 max_path = "./results/fk/final/conventionaltransverse-WH04-longest-default04.max"
-        
+
         return max_path
 
     def plot_figure(self, site, component, y_domain, ln_data, n_bins=100):
@@ -249,11 +266,8 @@ class CurvePicking:
 
         if ln_data:
             y_grid = np.log(y_grid)
-        
-        #vel_bins = np.logspace(
-        #    np.log10(np.min(vels_grid)), np.log10(np.max(vels_grid)), len(vel_meds) + 1
-        #)
 
+        # y_bins = np.logspace(np.log10(np.min(y_grid)), np.log10(np.max(y_grid)), n_bins)
         y_bins = np.linspace(np.min(y_grid), np.max(y_grid), n_bins)
 
         fig, ax = plt.subplots(figsize=(10, 5))
@@ -273,7 +287,7 @@ class CurvePicking:
         plt.xscale("log")
         # plt.yscale("log")
         # plt.ylim([100, 2200])
-        
+
         if y_domain == "velocity":
             if ln_data:
                 # plt.ylim([50, 2200])
@@ -305,10 +319,9 @@ class CurvePicking:
 
         plt.tight_layout()
 
-        return ax, hist, freqs_grid, vels_grid
+        return ax, hist, freqs_grid, y_grid
 
-    def adjustErrbarxy(self, errobj, x, y, y_error):
-
+    def update_error_bar(self, errobj, x, y, y_error):
         # ln, (errx_top, errx_bot, erry_top, erry_bot), (barsx, barsy) = errobj
         ln, caplines, (barsy) = errobj
         barsy = barsy[0]
@@ -341,9 +354,10 @@ class CurvePicking:
 
 
 if __name__ == "__main__":
-    site = "WH01"
-    component = "vertical"
-    y_domain = "velocity"
+    site = "WH04"
+    # component = "vertical"
+    component = "transverse"
+    y_domain = "slowness"
     ln_data = True
 
     selector = CurvePicking(site, component, y_domain, ln_data)
@@ -355,7 +369,7 @@ if __name__ == "__main__":
 
     plt.show()
 
-    selector.disconnect(site, component, y_domain)
+    selector.disconnect(site, component, y_domain, ln_data)
 
     # After figure is closed print the coordinates of the selected polygon
     print("\nSelected polygon:")
