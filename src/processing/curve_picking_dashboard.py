@@ -265,7 +265,7 @@ def update_dispersion_curve(
         data=[
             go.Histogram(
                 x=y_grid[np.isclose(freqs_grid, 10**freq)],
-                histnorm="probability",
+                # histnorm="probability",
                 # nbinsx=n_bins,
                 xbins=dict(
                     start=min_y, end=max_y, size=step_y
@@ -300,9 +300,10 @@ def update_dispersion_curve(
                 opacity=0.5,
             )
 
+            """
             mu = x[0]
-            variance = err
-            sigma = np.sqrt(variance)
+            # variance = err
+            sigma = err
             x = np.linspace(mu - 3 * sigma, mu + 3 * sigma, 100)
             freq_fig.add_trace(
                 go.Scatter(
@@ -311,7 +312,7 @@ def update_dispersion_curve(
                     mode="lines",
                 )
             )
-
+            """
     freq_fig.update_xaxes(range=[min_y, max_y])
     freq_fig.update_xaxes(title_text=y_label)
 
@@ -416,7 +417,7 @@ def get_path(site, transverse_comp, figure_type, ln_y_axis):
             elif figure_type == "slowness":
                 curve_path = "./results/curves/curve-WH04-transverse-slowness-True.csv"
         else:
-            max_path = "./results/fk/final/conventional-WH04-default08.max"
+            max_path = "./results/fk/final/conventional-WH04-longest-default08.max"
             if figure_type == "velocity":
                 curve_path = "./results/curves/curve-WH04-1C.csv"
             elif figure_type == "slowness":
