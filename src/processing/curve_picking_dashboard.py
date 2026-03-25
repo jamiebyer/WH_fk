@@ -21,8 +21,8 @@ app.layout = [
     html.H1(children="Curve picking", style={"textAlign": "center"}),
     dcc.Dropdown(["WH01", "WH02", "WH03", "WH04"], "WH01", id="site_selection"),
     dcc.Input(id="n_bins", type="number", min=10, max=500, step=1, value=200),
-    dcc.Upload("Load", id="load_curve"),
-    dcc.Input(id="file_name"),
+    # dcc.Upload("Load", id="load_curve"),
+    # dcc.Input(id="file_name"),
     html.Button("Save curve", id="save_curve"),
     dcc.Dropdown(["velocity", "slowness"], "velocity", id="figure_type"),
     dcc.Checklist(
@@ -69,6 +69,7 @@ app.layout = [
     ),
     html.Img(id="plt_figure"),
     # dcc.Graph(id="dispersion_curve_figure"),
+    dcc.Markdown("Frequency"),
     dcc.Slider(
         min=0,
         max=10,
@@ -79,6 +80,15 @@ app.layout = [
         id="freq_slider",
     ),
     dcc.Graph(id="frequency_dist_figure"),
+    dcc.Markdown("Mu"),
+    dcc.Slider(
+        min=-2,
+        max=2,
+        step=0.1,
+        value=0,
+        id="mu_slider",
+    ),
+    dcc.Markdown("Sigma"),
     dcc.Slider(
         min=0,
         max=2,
@@ -86,12 +96,21 @@ app.layout = [
         value=0.01,
         id="sigma_slider",
     ),
+    dcc.Markdown("Lambda"),
+    dcc.Slider(
+        min=0,
+        max=3,
+        step=0.01,
+        value=1,
+        id="lambda_slider",
+    ),
+    dcc.Markdown("Scale"),
     dcc.Slider(
         min=0,
         max=2,
         step=0.01,
         value=1,
-        id="lambda_slider",
+        id="scale_slider",
     ),
 ]
 
@@ -110,6 +129,7 @@ app.layout = [
     Input(component_id="freq_slider", component_property="value"),
     Input(component_id="sigma_slider", component_property="value"),
     Input(component_id="lambda_slider", component_property="value"),
+    Input(component_id="scale_slider", component_property="value"),
 )
 def update_dispersion_curve(
     # disp_fig,
@@ -122,6 +142,7 @@ def update_dispersion_curve(
     selected_freq,
     sigma,
     lambd,
+    scale,
 ):
     """
     Update disperion curve 2D histogram figure.
@@ -202,6 +223,7 @@ def update_dispersion_curve(
         n_bins,
         sigma,
         lambd,
+        scale,
     )
 
     # return pyplot_fig, disp_fig, freq_fig
@@ -213,6 +235,9 @@ def update_dispersion_curve(
     Output(component_id="freq_slider", component_property="max"),
     Output(component_id="freq_slider", component_property="step"),
     Output(component_id="freq_slider", component_property="marks"),
+    Output(component_id="sigma_slider", component_property="min"),
+    Output(component_id="sigma_slider", component_property="max"),
+    Output(component_id="sigma_slider", component_property="step"),
     Input(component_id="site_selection", component_property="value"),
     Input(component_id="transverse_comp", component_property="value"),
     Input(component_id="figure_type", component_property="value"),
@@ -252,7 +277,18 @@ def update_frequency_slider(site, transverse_comp, figure_type, ln_y_axis):
 
     step = (max_freq - min_freq) / (len(df["freqs"]) - 1)
 
-    return min_freq, max_freq, step, marks
+    if figure_type == "velocity":
+        if ln_y_axis:
+            min_sigma, max_sigma, step_sigma = 0.1, 2, 0.1
+        else:
+            min_sigma, max_sigma, step_sigma = 1, 500, 10
+    elif figure_type == "slowness":
+        if ln_y_axis:
+            min_sigma, max_sigma, step_sigma = 0.1, 2, 0.1
+        else:
+            min_sigma, max_sigma, step_sigma = 0.1, 2, 0.1
+
+    return min_freq, max_freq, step, marks, min_sigma, max_sigma, step_sigma
 
 
 def get_path(site, transverse_comp, figure_type, ln_y_axis):
@@ -612,6 +648,7 @@ def freq_plot(
     n_bins,
     sigma,
     lambd,
+    scale,
 ):
     min_freq = np.log10(np.min(freqs_grid))
     max_freq = np.log10(np.max(freqs_grid))
@@ -682,11 +719,7 @@ def freq_plot(
 
     x = y_curve[inds].values
     if len(x) == 1:
-        freq_fig.add_vline(
-            x=x[0],
-            fillcolor="red",
-            opacity=0.5,
-        )
+        freq_fig.add_vline(x=x[0], fillcolor="red", opacity=0.5, name="mode")
 
         if (not ln_y_axis and figure_type == "velocity") or (
             ln_y_axis and figure_type == "slowness"
@@ -694,28 +727,21 @@ def freq_plot(
             err = curve_df["stds"][inds]
             err = err.values[0]
 
-            freq_fig.add_vline(
-                x=x[0] - err,
-                fillcolor="black",
-                opacity=0.5,
-            )
-            freq_fig.add_vline(
-                x=x[0] + err,
-                fillcolor="black",
-                opacity=0.5,
-            )
+            freq_fig.add_vline(x=x[0] - err, fillcolor="black", opacity=0.5, name="std")
+            freq_fig.add_vline(x=x[0] + err, fillcolor="black", opacity=0.5, name="std")
 
             # plot gaussian
             mu = x[0]
             # variance = err
             # sigma = np.sqrt(variance)
             sigma_norm = err
-            x = np.linspace(mu - 3 * sigma_norm, mu + 3 * sigma_norm, 100)
+            x = np.linspace(min_y, max_y, 500)
             freq_fig.add_trace(
                 go.Scatter(
                     x=x,
                     y=stats.norm.pdf(x, mu, sigma_norm),
                     mode="lines",
+                    name="Gaussian",
                 )
             )
 
@@ -733,27 +759,19 @@ def freq_plot(
             )
             """
             mu = 0
-            x = np.linspace(min_res, max_res, 100)
+            x = np.linspace(min_res, max_res, 500)
             pdf = (
                 (lambd / 2)
                 * np.exp((lambd / 2) * (2 * mu + lambd * sigma**2 - 2 * x))
-                * special.erf((mu + lambd * sigma**2 - x) / (np.sqrt(2) * sigma))
+                * (1 - special.erf((mu + lambd * sigma**2 - x) / (np.sqrt(2) * sigma)))
             )
             freq_fig.add_trace(
                 go.Scatter(
                     x=x,
                     # y=stats.exponnorm.pdf(x, K, loc=0, scale=sigma),
-                    y=pdf,
+                    y=scale * pdf,
                     mode="lines",
-                )
-            )
-
-            K = 1 / (sigma * lambd)
-            freq_fig.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=stats.exponnorm.pdf(x, K, loc=0, scale=sigma),
-                    mode="lines",
+                    name="EMG",
                 )
             )
 
