@@ -1,4 +1,4 @@
-from dash import Dash, html, dcc, callback, Output, Input
+from dash import Dash, html, dcc, callback, Output, Input, ctx
 import plotly.express as px
 import pandas as pd
 import plotly.graph_objects as go
@@ -8,15 +8,19 @@ import base64
 from io import BytesIO
 import numpy as np
 import scipy.stats as stats
+from scipy import special
 
 from matplotlib.colors import LogNorm
+from matplotlib.patches import Polygon
+
+import ast
 
 app = Dash()
 
 app.layout = [
     html.H1(children="Curve picking", style={"textAlign": "center"}),
     dcc.Dropdown(["WH01", "WH02", "WH03", "WH04"], "WH01", id="site_selection"),
-    dcc.Input(id="n_bins", type="number", min=10, max=500, step=1, value=100),
+    dcc.Input(id="n_bins", type="number", min=10, max=500, step=1, value=200),
     dcc.Upload("Load", id="load_curve"),
     dcc.Input(id="file_name"),
     html.Button("Save curve", id="save_curve"),
@@ -44,6 +48,13 @@ app.layout = [
     ),
     dcc.Checklist(
         options=[
+            {"label": "plot residuals", "value": True},
+        ],
+        value=[True],
+        id="plot_residuals",
+    ),
+    dcc.Checklist(
+        options=[
             {"label": "show curve", "value": True},
         ],
         value=[True],
@@ -68,126 +79,63 @@ app.layout = [
         id="freq_slider",
     ),
     dcc.Graph(id="frequency_dist_figure"),
+    dcc.Slider(
+        min=0,
+        max=2,
+        step=0.01,
+        value=0.01,
+        id="sigma_slider",
+    ),
+    dcc.Slider(
+        min=0,
+        max=2,
+        step=0.01,
+        value=1,
+        id="lambda_slider",
+    ),
 ]
 
 
 @app.callback(
     Output(component_id="plt_figure", component_property="src"),
-    Input(component_id="site_selection", component_property="value"),
-    Input(component_id="figure_type", component_property="value"),
-    Input(component_id="transverse_comp", component_property="value"),
-    Input(component_id="ln_y_axis", component_property="value"),
-    Input(component_id="n_bins", component_property="value"),
-    Input(component_id="freq_slider", component_property="value"),
-)
-def update_dispersion_curve(
-    site, figure_type, transverse_comp, ln_y_axis, n_bins, freq
-):
-    # Build the matplotlib figure
-    fig = plt.figure(figsize=(14, 5))
-
-    max_path, curve_path = get_path(site, transverse_comp, figure_type, ln_y_axis)
-
-    df_max = read_max_file(max_path)
-    freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
-        df_max,
-    )
-
-    if figure_type == "velocity":
-        y_grid = vels_grid
-    elif figure_type == "slowness":
-        y_grid = 1 / vels_grid
-
-    if np.sum(ln_y_axis) == 1:
-        y_grid = np.log(y_grid)
-
-    freq_bins = np.logspace(
-        np.log10(np.min(freqs_grid)), np.log10(np.max(freqs_grid)), len(freqs) + 1
-    )
-    y_bins = np.linspace(np.min(y_grid), np.max(y_grid), n_bins)
-
-    plt.hist2d(
-        freqs_grid,
-        y_grid,
-        bins=[
-            freq_bins,
-            y_bins,
-        ],
-        norm=LogNorm(),
-    )
-
-    df = pd.read_csv(curve_path)
-    y_curve = df["vels"]
-
-    # if figure_type == "velocity":
-    #     y_curve = df["vels"]
-    # elif figure_type == "slowness":
-    #     y_curve = 1 / df["vels"]
-
-    if np.sum(ln_y_axis) == 1 and figure_type == "velocity":
-        y_curve = np.log(y_curve)
-    elif np.sum(ln_y_axis) == 0 and figure_type == "slowness":
-        y_curve = np.exp(y_curve)
-
-    y_err = None
-    if (np.sum(ln_y_axis) == 0 and figure_type == "velocity") or (
-        np.sum(ln_y_axis) == 1 and figure_type == "slowness"
-    ):
-        y_err = df["stds"]
-
-    plt.errorbar(
-        df["freqs"],
-        y_curve,
-        yerr=y_err,
-        marker="o",
-        markersize=2,
-        c="black",
-    )
-
-    plt.xscale("log")
-    plt.axvline(10**freq, c="red", alpha=0.5)
-
-    y_label = figure_type
-    if np.sum(ln_y_axis) == 1:
-        y_label = "ln(" + y_label + ")"
-
-    plt.xlabel("frequency (Hz)")
-    plt.ylabel(y_label)
-
-    plt.colorbar(label="counts")
-
-    # Save it to a temporary buffer.
-    buf = BytesIO()
-    fig.savefig(buf, format="png")
-    # Embed the result in the html output.
-    fig_data = base64.b64encode(buf.getbuffer()).decode("ascii")
-    fig_bar_matplotlib = f"data:image/png;base64,{fig_data}"
-
-    return fig_bar_matplotlib
-
-
-# """
-
-
-@app.callback(
     # Output(component_id="dispersion_curve_figure", component_property="figure"),
     Output(component_id="frequency_dist_figure", component_property="figure"),
+    # Input(component_id="dispersion_curve_figure", component_property="figure"),
     Input(component_id="site_selection", component_property="value"),
     Input(component_id="figure_type", component_property="value"),
+    Input(component_id="plot_residuals", component_property="value"),
     Input(component_id="transverse_comp", component_property="value"),
     Input(component_id="ln_y_axis", component_property="value"),
     Input(component_id="n_bins", component_property="value"),
     Input(component_id="freq_slider", component_property="value"),
+    Input(component_id="sigma_slider", component_property="value"),
+    Input(component_id="lambda_slider", component_property="value"),
 )
 def update_dispersion_curve(
-    site, figure_type, transverse_comp, ln_y_axis, n_bins, freq
+    # disp_fig,
+    site,
+    figure_type,
+    plot_residuals,
+    transverse_comp,
+    ln_y_axis,
+    n_bins,
+    selected_freq,
+    sigma,
+    lambd,
 ):
     """
     Update disperion curve 2D histogram figure.
     Vertical line at selected frequency.
     """
+    callback_context = ctx.triggered_id
 
-    max_path, curve_path = get_path(site, transverse_comp, figure_type, ln_y_axis)
+    plot_residuals = np.sum(plot_residuals) == 1
+    transverse_comp = np.sum(transverse_comp) == 1
+    ln_y_axis = np.sum(ln_y_axis) == 1
+
+    max_path, curve_path, polygon_path = get_path(
+        site, transverse_comp, figure_type, ln_y_axis
+    )
 
     df_max = read_max_file(max_path)
     freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
@@ -199,124 +147,65 @@ def update_dispersion_curve(
     elif figure_type == "slowness":
         y_grid = 1 / vels_grid
 
-    if np.sum(ln_y_axis) == 1:
+    if ln_y_axis:
         y_grid = np.log(y_grid)
 
-    min_freq = np.log10(np.min(freqs_grid))
-    max_freq = np.log10(np.max(freqs_grid))
-    step_freq = (max_freq - min_freq) / (len(freqs) + 1)
+    curve_df = pd.read_csv(curve_path)
 
-    min_y = np.min(y_grid)
-    max_y = np.max(y_grid)
-    step_y = (max_y - min_y) / n_bins
+    # if callback_context is None:
+    with open(polygon_path) as f:
+        contents = f.read()
+    # polygon = contents.replace("[", "").replace("]", "").split("), (")
+    polygon = ast.literal_eval(contents)
 
     """
-    # plot frequency and velocity 2D histogram
-    disp_fig = go.Figure(
-        go.Histogram2d(
-            x=np.log10(freqs_grid),
-            y=y_grid,
-            # z=h,
-            # histnorm="probability",
-            # autobinx=False,
-            # xbins=dict(start=min_freq, end=max_freq, size=step_freq),
-            # autobiny=False,
-            # ybins=dict(start=min_y, end=max_y, size=step_y),
-            nbinsx=len(freqs) + 1,
-            nbinsy=n_bins,
-            # zmin=5,
-            # zmax=0.00000001,
-            # colorscale="ylorrd",
-        )
+    elif callback_context == "dispersion_curve_figure":
+        # update dispersion curve selection
+
+        pass
+
+    disp_fig = plotly_hist(
+        figure_type,
+        freqs,
+        freqs_grid,
+        y_grid,
+        curve_df,
+        ln_y_axis,
+        selected_freq,
+        n_bins,
+        polygon,
     )
     """
-    # plot dispersion curve
-    df = pd.read_csv(curve_path)
-    y_curve = df["vels"]
 
-    if figure_type == "velocity" and np.sum(ln_y_axis) == 1:
-        y_curve = np.log(y_curve)
-    elif figure_type == "slowness" and np.sum(ln_y_axis) == 0:
-        y_curve = np.exp(y_curve)
-
-    """
-    disp_fig.add_trace(
-        go.Scatter(
-            x=np.log10(df["freqs"]),
-            y=y_curve,
-            # error_y=dict(type="data", array=new_err, visible=True),
-            mode="markers+lines",
-        )
+    pyplot_fig = pyplot_hist(
+        figure_type,
+        plot_residuals,
+        freqs,
+        freqs_grid,
+        y_grid,
+        curve_df,
+        selected_freq,
+        ln_y_axis,
+        n_bins,
+        polygon,
     )
 
-    disp_fig.add_vline(x=freq, fillcolor="red", opacity=0.5)
-    """
-    # fig.update_yaxes(range=[50, 2200])
-    # fig.update_yaxes(range=[0, 0.0220])
-
-    y_label = figure_type
-    if np.sum(ln_y_axis) == 1:
-        y_label = "ln(" + y_label + ")"
-
-    # disp_fig.update_xaxes(title_text="frequency (Hz)")
-    # disp_fig.update_yaxes(title_text=y_label)
-
-    freq_fig = go.Figure(
-        data=[
-            go.Histogram(
-                x=y_grid[np.isclose(freqs_grid, 10**freq)],
-                # histnorm="probability",
-                # nbinsx=n_bins,
-                xbins=dict(
-                    start=min_y, end=max_y, size=step_y
-                ),  # bins used for histogram
-            )
-        ]
+    freq_fig = freq_plot(
+        figure_type,
+        plot_residuals,
+        freqs,
+        freqs_grid,
+        y_grid,
+        curve_df,
+        selected_freq,
+        ln_y_axis,
+        n_bins,
+        sigma,
+        lambd,
     )
 
-    inds = np.isclose(df["freqs"], np.repeat(10**freq, len(df["freqs"])))
-    x = y_curve[inds].values
-    if len(x) == 1:
-        freq_fig.add_vline(
-            x=x[0],
-            fillcolor="red",
-            opacity=0.5,
-        )
-
-        if (np.sum(ln_y_axis) == 0 and figure_type == "velocity") or (
-            np.sum(ln_y_axis) == 1 and figure_type == "slowness"
-        ):
-            err = df["stds"][inds]
-            err = err.values[0]
-
-            freq_fig.add_vline(
-                x=x[0] - err,
-                fillcolor="black",
-                opacity=0.5,
-            )
-            freq_fig.add_vline(
-                x=x[0] + err,
-                fillcolor="black",
-                opacity=0.5,
-            )
-
-            """
-            mu = x[0]
-            # variance = err
-            sigma = err
-            x = np.linspace(mu - 3 * sigma, mu + 3 * sigma, 100)
-            freq_fig.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=stats.norm.pdf(x, mu, sigma),
-                    mode="lines",
-                )
-            )
-            """
-    freq_fig.update_xaxes(range=[min_y, max_y])
-    freq_fig.update_xaxes(title_text=y_label)
-
-    return freq_fig
+    # return pyplot_fig, disp_fig, freq_fig
+    return pyplot_fig, freq_fig
 
 
 @callback(
@@ -336,7 +225,9 @@ def update_frequency_slider(site, transverse_comp, figure_type, ln_y_axis):
     (If plotting dispersion curve, only show frequencies from dispersion curve.
      Otherwise, plot all frequencies)
     """
-    max_path, curve_path = get_path(site, transverse_comp, figure_type, ln_y_axis)
+    max_path, curve_path, polygon_path = get_path(
+        site, transverse_comp, figure_type, ln_y_axis
+    )
 
     df_max = read_max_file(max_path)
     freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
@@ -365,8 +256,10 @@ def update_frequency_slider(site, transverse_comp, figure_type, ln_y_axis):
 
 
 def get_path(site, transverse_comp, figure_type, ln_y_axis):
+    max_path, curve_path = "", ""
+
     if site == "WH01":
-        if np.sum(transverse_comp) == 1:
+        if transverse_comp:
             max_path = "./results/fk/final/conventionaltransverse-WH01-default04.max"
             if figure_type == "velocity":
                 curve_path = "./results/curves/curve-WH01-2C.csv"
@@ -380,7 +273,7 @@ def get_path(site, transverse_comp, figure_type, ln_y_axis):
             elif figure_type == "slowness":
                 curve_path = "./results/curves/curve-WH01-vertical-slowness-True.csv"
     elif site == "WH02":
-        if np.sum(transverse_comp) == 1:
+        if transverse_comp:
             max_path = "./results/fk/final/conventionaltransverse-WH02-default04.max"
             if figure_type == "velocity":
                 curve_path = "./results/curves/curve-WH02-2C.csv"
@@ -393,7 +286,7 @@ def get_path(site, transverse_comp, figure_type, ln_y_axis):
             elif figure_type == "slowness":
                 curve_path = "./results/curves/curve-WH02-vertical-slowness-True.csv"
     elif site == "WH03":
-        if np.sum(transverse_comp) == 1:
+        if transverse_comp:
             max_path = (
                 "./results/fk/final/conventionaltransverse-WH03-sliced-default04.max"
             )
@@ -408,7 +301,7 @@ def get_path(site, transverse_comp, figure_type, ln_y_axis):
             elif figure_type == "slowness":
                 curve_path = "./results/curves/curve-WH03-vertical-slowness-True.csv"
     elif site == "WH04":
-        if np.sum(transverse_comp) == 1:
+        if transverse_comp:
             max_path = (
                 "./results/fk/final/conventionaltransverse-WH04-longest-default04.max"
             )
@@ -423,7 +316,9 @@ def get_path(site, transverse_comp, figure_type, ln_y_axis):
             elif figure_type == "slowness":
                 curve_path = "./results/curves/curve-WH04-vertical-slowness-True.csv"
 
-    return max_path, curve_path
+    polygon_path = curve_path.replace(".csv", ".txt")
+
+    return max_path, curve_path, polygon_path
 
 
 def read_max_file(max_file):
@@ -510,6 +405,374 @@ def compute_dispersion_curve(df, err_thresh=None, freq_outliers=[], vel_outliers
         np.array(vel_means_curve),
         np.array(stds_curve),
     )
+
+
+def plotly_hist(
+    figure_type,
+    freqs,
+    freqs_grid,
+    y_grid,
+    df_curve,
+    ln_y_axis,
+    selected_freq,
+    n_bins,
+    polygon,
+):
+    min_freq = np.log10(np.min(freqs_grid))
+    max_freq = np.log10(np.max(freqs_grid))
+    step_freq = (max_freq - min_freq) / (len(freqs) + 1)
+
+    min_y = np.min(y_grid)
+    max_y = np.max(y_grid)
+    step_y = (max_y - min_y) / n_bins
+
+    # plot frequency and velocity 2D histogram
+    disp_fig = go.Figure(
+        go.Histogram2d(
+            x=np.log10(freqs_grid),
+            y=y_grid,
+            # z=h,
+            # histnorm="probability",
+            # autobinx=False,
+            # xbins=dict(start=min_freq, end=max_freq, size=step_freq),
+            # autobiny=False,
+            # ybins=dict(start=min_y, end=max_y, size=step_y),
+            nbinsx=len(freqs) + 1,
+            nbinsy=n_bins,
+            # zmin=5,
+            # zmax=0.00000001,
+            # colorscale="ylorrd",
+        )
+    )
+
+    # plot dispersion curve
+    y_curve = df_curve["vels"]
+
+    if figure_type == "velocity" and ln_y_axis:
+        y_curve = np.log(y_curve)
+    elif figure_type == "slowness" and ln_y_axis:
+        y_curve = np.exp(y_curve)
+
+    disp_fig.add_trace(
+        go.Scatter(
+            x=np.log10(df_curve["freqs"]),
+            y=y_curve,
+            # error_y=dict(type="data", array=new_err, visible=True),
+            mode="markers+lines",
+        )
+    )
+
+    disp_fig.add_vline(x=selected_freq, fillcolor="red", opacity=0.5)
+
+    if callback_context is None:
+        polygon_string = "M"
+        for ind, (x, y) in enumerate(polygon):
+            polygon_string += str(x) + "," + str(y)
+            if ind == len(polygon):
+                polygon_string += "Z"
+            else:
+                polygon_string += "L"
+
+        disp_fig.add_selection(path=polygon_string)
+
+    # fig.update_yaxes(range=[50, 2200])
+    # fig.update_yaxes(range=[0, 0.0220])
+
+    y_label = figure_type
+    if np.sum(ln_y_axis) == 1:
+        y_label = "ln(" + y_label + ")"
+
+    disp_fig.update_xaxes(title_text="frequency (Hz)")
+    disp_fig.update_yaxes(title_text=y_label)
+
+    return disp_fig
+
+
+def pyplot_hist(
+    figure_type,
+    plot_residuals,
+    freqs,
+    freqs_grid,
+    y_grid,
+    curve_df,
+    selected_freq,
+    ln_y_axis,
+    n_bins,
+    polygon,
+):
+    # Build the matplotlib figure
+    # fig = plt.figure(figsize=(14, 5))
+    fig, ax = plt.subplots(ncols=1, nrows=1, figsize=(14, 5))
+
+    freq_bins = np.logspace(
+        np.log10(np.min(freqs_grid)), np.log10(np.max(freqs_grid)), len(freqs) + 1
+    )
+    y_bins = np.linspace(np.min(y_grid), np.max(y_grid), n_bins)
+
+    y_curve = curve_df["vels"]
+    if ln_y_axis and figure_type == "velocity":
+        y_curve = np.log(y_curve)
+    elif ln_y_axis and figure_type == "slowness":
+        y_curve = np.exp(y_curve)
+
+    if plot_residuals:
+        # get freqs for dispersion curve
+        # get freqs_grid with the same frequencies as the dispersion curve.
+        curve_freqs = curve_df["freqs"]
+
+        residuals_freq = []
+        residuals_grid = []
+        for f in curve_freqs:
+            res = list(
+                y_grid[np.isclose(freqs_grid, f)].values
+                - y_curve[curve_freqs == f].values[0]
+            )
+            residuals_freq += list(np.repeat(f, len(res)))
+            residuals_grid += res
+
+        res_bins = np.linspace(np.min(residuals_grid), np.max(residuals_grid), n_bins)
+        plt.hist2d(
+            residuals_freq,
+            residuals_grid,
+            bins=[
+                freq_bins,
+                res_bins,
+            ],
+            norm=LogNorm(),
+        )
+    else:
+        plt.hist2d(
+            freqs_grid,
+            y_grid,
+            bins=[
+                freq_bins,
+                y_bins,
+            ],
+            norm=LogNorm(),
+        )
+
+        y_err = None
+        if (not ln_y_axis and figure_type == "velocity") or (
+            ln_y_axis and figure_type == "slowness"
+        ):
+            y_err = curve_df["stds"]
+
+        plt.errorbar(
+            curve_df["freqs"],
+            y_curve,
+            yerr=y_err,
+            marker="o",
+            markersize=2,
+            c="black",
+        )
+
+        ax.add_patch(
+            Polygon(
+                polygon,
+                facecolor="none",
+                edgecolor="black",
+                linewidth=3,
+                # alpha=0.3,
+            )
+        )
+
+    plt.xscale("log")
+    plt.axvline(10**selected_freq, c="red", alpha=0.5)
+
+    y_label = figure_type
+    if ln_y_axis:
+        y_label = "ln(" + y_label + ")"
+    if plot_residuals:
+        y_label += " residuals"
+
+    plt.xlabel("frequency (Hz)")
+    plt.ylabel(y_label)
+
+    plt.colorbar(label="counts")
+
+    # Save it to a temporary buffer.
+    buf = BytesIO()
+    fig.savefig(buf, format="png")
+    # Embed the result in the html output.
+    fig_data = base64.b64encode(buf.getbuffer()).decode("ascii")
+    fig_bar_matplotlib = f"data:image/png;base64,{fig_data}"
+
+    return fig_bar_matplotlib
+
+
+def freq_plot(
+    figure_type,
+    plot_residuals,
+    freqs,
+    freqs_grid,
+    y_grid,
+    curve_df,
+    selected_freq,
+    ln_y_axis,
+    n_bins,
+    sigma,
+    lambd,
+):
+    min_freq = np.log10(np.min(freqs_grid))
+    max_freq = np.log10(np.max(freqs_grid))
+    step_freq = (max_freq - min_freq) / (len(freqs) + 1)
+
+    min_y = np.min(y_grid)
+    max_y = np.max(y_grid)
+    step_y = (max_y - min_y) / n_bins
+
+    y_curve = curve_df["vels"]
+    if figure_type == "velocity" and ln_y_axis:
+        y_curve = np.log(y_curve)
+    elif figure_type == "slowness" and ln_y_axis:
+        y_curve = np.exp(y_curve)
+
+    if plot_residuals:
+        # get freqs for dispersion curve
+        # get freqs_grid with the same frequencies as the dispersion curve.
+        curve_freqs = curve_df["freqs"]
+
+        residuals_freq = []
+        residuals_grid = []
+        for f in curve_freqs:
+            res = list(
+                y_grid[np.isclose(freqs_grid, f)].values
+                - y_curve[curve_freqs == f].values[0]
+            )
+            residuals_freq += list(np.repeat(f, len(res)))
+            residuals_grid += res
+
+        min_res = np.min(residuals_grid)
+        max_res = np.max(residuals_grid)
+        step_res = (max_res - min_res) / n_bins
+
+        freq_fig = go.Figure(
+            data=[
+                go.Histogram(
+                    x=np.array(residuals_grid)[
+                        np.isclose(residuals_freq, 10**selected_freq)
+                    ],
+                    histnorm="probability",
+                    # nbinsx=n_bins,
+                    xbins=dict(
+                        start=min_res, end=max_res, size=step_res
+                    ),  # bins used for histogram
+                )
+            ]
+        )
+        freq_fig.update_xaxes(range=[min_res, max_res])
+    else:
+        freq_fig = go.Figure(
+            data=[
+                go.Histogram(
+                    x=y_grid[np.isclose(freqs_grid, 10**selected_freq)],
+                    histnorm="probability",
+                    # nbinsx=n_bins,
+                    xbins=dict(
+                        start=min_y, end=max_y, size=step_y
+                    ),  # bins used for histogram
+                )
+            ]
+        )
+        freq_fig.update_xaxes(range=[min_y, max_y])
+
+    inds = np.isclose(
+        curve_df["freqs"], np.repeat(10**selected_freq, len(curve_df["freqs"]))
+    )
+
+    x = y_curve[inds].values
+    if len(x) == 1:
+        freq_fig.add_vline(
+            x=x[0],
+            fillcolor="red",
+            opacity=0.5,
+        )
+
+        if (not ln_y_axis and figure_type == "velocity") or (
+            ln_y_axis and figure_type == "slowness"
+        ):
+            err = curve_df["stds"][inds]
+            err = err.values[0]
+
+            freq_fig.add_vline(
+                x=x[0] - err,
+                fillcolor="black",
+                opacity=0.5,
+            )
+            freq_fig.add_vline(
+                x=x[0] + err,
+                fillcolor="black",
+                opacity=0.5,
+            )
+
+            # plot gaussian
+            mu = x[0]
+            # variance = err
+            # sigma = np.sqrt(variance)
+            sigma_norm = err
+            x = np.linspace(mu - 3 * sigma_norm, mu + 3 * sigma_norm, 100)
+            freq_fig.add_trace(
+                go.Scatter(
+                    x=x,
+                    y=stats.norm.pdf(x, mu, sigma_norm),
+                    mode="lines",
+                )
+            )
+
+        if plot_residuals:
+            """
+            x = np.linspace(
+                stats.exponnorm.ppf(0.01, K), stats.exponnorm.ppf(0.99, K), 100
+            )
+            freq_fig.add_trace(
+                go.Scatter(
+                    x=x,
+                    y=stats.exponnorm.pdf(x, K, loc=0, scale=sigma),
+                    mode="lines",
+                )
+            )
+            """
+            freq_fig.add_vline(
+                x=0,
+                fillcolor="black",
+                opacity=0.5,
+            )
+            # """
+            mu = 0
+            x = np.linspace(min_res, max_res, 100)
+            pdf = (
+                (lambd / 2)
+                * np.exp((lambd / 2) * (2 * mu + lambd * sigma**2 - 2 * x))
+                * special.erf((mu + lambd * sigma**2 - x) / (np.sqrt(2) * sigma))
+            )
+            freq_fig.add_trace(
+                go.Scatter(
+                    x=x,
+                    # y=stats.exponnorm.pdf(x, K, loc=0, scale=sigma),
+                    y=pdf,
+                    mode="lines",
+                )
+            )
+            # """
+            K = 1 / (sigma * lambd)
+            # K = lambd
+            freq_fig.add_trace(
+                go.Scatter(
+                    x=x,
+                    y=stats.exponnorm.pdf(x, K, loc=0, scale=sigma),
+                    mode="lines",
+                )
+            )
+
+    y_label = figure_type
+    if np.sum(ln_y_axis) == 1:
+        y_label = "ln(" + y_label + ")"
+    if plot_residuals:
+        y_label += " residuals"
+
+    freq_fig.update_xaxes(title_text=y_label)
+
+    return freq_fig
 
 
 if __name__ == "__main__":
