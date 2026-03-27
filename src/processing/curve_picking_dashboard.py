@@ -23,7 +23,7 @@ app.layout = [
     dcc.Input(id="n_bins", type="number", min=10, max=500, step=1, value=200),
     # dcc.Upload("Load", id="load_curve"),
     # dcc.Input(id="file_name"),
-    html.Button("Save curve", id="save_curve"),
+    # html.Button("Save curve", id="save_curve"),
     dcc.Dropdown(["velocity", "slowness"], "velocity", id="figure_type"),
     dcc.Checklist(
         options=[
@@ -36,7 +36,7 @@ app.layout = [
         options=[
             {"label": "ln y-axis", "value": True},
         ],
-        value=[True],
+        value=[],
         id="ln_y_axis",
     ),
     dcc.Checklist(
@@ -113,6 +113,7 @@ app.layout = [
     Input(component_id="show_err_dist", component_property="value"),
     Input(component_id="n_bins", component_property="value"),
     Input(component_id="freq_slider", component_property="value"),
+    Input(component_id="mu_slider", component_property="value"),
     Input(component_id="sigma_slider", component_property="value"),
     Input(component_id="lambda_slider", component_property="value"),
     Input(component_id="scale_slider", component_property="value"),
@@ -127,6 +128,7 @@ def update_dispersion_curve(
     show_err_dist,
     n_bins,
     selected_freq,
+    mu,
     sigma,
     lambd,
     scale,
@@ -210,6 +212,7 @@ def update_dispersion_curve(
         ln_y_axis,
         show_err_dist,
         n_bins,
+        mu,
         sigma,
         lambd,
         scale,
@@ -227,6 +230,9 @@ def update_dispersion_curve(
     Output(component_id="sigma_slider", component_property="min"),
     Output(component_id="sigma_slider", component_property="max"),
     Output(component_id="sigma_slider", component_property="step"),
+    Output(component_id="mu_slider", component_property="min"),
+    Output(component_id="mu_slider", component_property="max"),
+    Output(component_id="mu_slider", component_property="step"),
     Input(component_id="site_selection", component_property="value"),
     Input(component_id="transverse_comp", component_property="value"),
     Input(component_id="figure_type", component_property="value"),
@@ -269,15 +275,30 @@ def update_frequency_slider(site, transverse_comp, figure_type, ln_y_axis):
     if figure_type == "velocity":
         if ln_y_axis:
             min_sigma, max_sigma, step_sigma = 0.1, 2, 0.1
+            min_mu, max_mu, step_mu = -2, 2, 0.1
         else:
-            min_sigma, max_sigma, step_sigma = 1, 15, 0.1
+            min_sigma, max_sigma, step_sigma = 1, 20, 0.5
+            min_mu, max_mu, step_mu = -100, 100, 1
     elif figure_type == "slowness":
         if ln_y_axis:
             min_sigma, max_sigma, step_sigma = 0.1, 2, 0.1
+            min_mu, max_mu, step_mu = -2, 2, 0.1
         else:
             min_sigma, max_sigma, step_sigma = 0.1, 2, 0.1
+            min_mu, max_mu, step_mu = -2, 2, 0.1
 
-    return min_freq, max_freq, step, marks, min_sigma, max_sigma, step_sigma
+    return (
+        min_freq,
+        max_freq,
+        step,
+        marks,
+        min_sigma,
+        max_sigma,
+        step_sigma,
+        min_mu,
+        max_mu,
+        step_mu,
+    )
 
 
 def get_path(site, transverse_comp, figure_type, ln_y_axis):
@@ -547,6 +568,8 @@ def pyplot_hist(
 
         residuals_freq = []
         residuals_grid = []
+        quant_5 = []
+        quant_95 = []
         for f in curve_freqs:
             res = list(
                 y_grid[np.isclose(freqs_grid, f)].values
@@ -554,6 +577,8 @@ def pyplot_hist(
             )
             residuals_freq += list(np.repeat(f, len(res)))
             residuals_grid += res
+            quant_5.append(np.quantile(res, 0.05))
+            quant_95.append(np.quantile(res, 0.95))
 
         res_bins = np.linspace(np.min(residuals_grid), np.max(residuals_grid), n_bins)
         plt.hist2d(
@@ -565,6 +590,9 @@ def pyplot_hist(
             ],
             norm=LogNorm(),
         )
+
+        plt.plot(curve_freqs, quant_5, c="black")
+        plt.plot(curve_freqs, quant_95, c="black")
     else:
         plt.hist2d(
             freqs_grid,
@@ -580,7 +608,8 @@ def pyplot_hist(
         if (not ln_y_axis and figure_type == "velocity") or (
             ln_y_axis and figure_type == "slowness"
         ):
-            y_err = curve_df["stds"]
+            # y_err = curve_df["stds"]
+            pass
 
         plt.errorbar(
             curve_df["freqs"],
@@ -591,6 +620,7 @@ def pyplot_hist(
             c="black",
         )
 
+        """
         ax.add_patch(
             Polygon(
                 polygon,
@@ -600,7 +630,7 @@ def pyplot_hist(
                 # alpha=0.3,
             )
         )
-
+        """
     plt.xscale("log")
     plt.axvline(10**selected_freq, c="red", alpha=0.5)
 
@@ -636,6 +666,7 @@ def freq_plot(
     ln_y_axis,
     show_err_dist,
     n_bins,
+    mu,
     sigma,
     lambd,
     scale,
@@ -673,12 +704,11 @@ def freq_plot(
         max_res = np.max(residuals_grid)
         step_res = (max_res - min_res) / n_bins
 
+        res = np.array(residuals_grid)[np.isclose(residuals_freq, 10**selected_freq)]
         freq_fig = go.Figure(
             data=[
                 go.Histogram(
-                    x=np.array(residuals_grid)[
-                        np.isclose(residuals_freq, 10**selected_freq)
-                    ],
+                    x=res,
                     histnorm="probability",
                     # nbinsx=n_bins,
                     xbins=dict(
@@ -687,6 +717,8 @@ def freq_plot(
                 )
             ]
         )
+        freq_fig.add_vline(x=np.quantile(res, 0.05), line_color="black", name="5%")
+        freq_fig.add_vline(x=np.quantile(res, 0.95), line_color="black", name="95%")
         freq_fig.update_xaxes(range=[min_res, max_res])
     else:
         freq_fig = go.Figure(
@@ -709,54 +741,17 @@ def freq_plot(
 
     x = y_curve[inds].values
     if len(x) == 1:
-        freq_fig.add_vline(x=x[0], fillcolor="red", opacity=0.5, name="mode")
 
         if ((not ln_y_axis and figure_type == "velocity") or (
             ln_y_axis and figure_type == "slowness"
-        )) and not plot_residuals:
-            err = curve_df["stds"][inds]
-            err = err.values[0]
+        ):
+            # err = curve_df["stds"][inds]
+            # err = err.values[0]
 
-            freq_fig.add_vline(x=x[0] - err, fillcolor="black", opacity=0.5, name="std")
-            freq_fig.add_vline(x=x[0] + err, fillcolor="black", opacity=0.5, name="std")
+            # freq_fig.add_vline(x=x[0] - err, fillcolor="black", opacity=0.5, name="std")
+            # freq_fig.add_vline(x=x[0] + err, fillcolor="black", opacity=0.5, name="std")
 
-            """
-            # plot gaussian
-            mu = x[0]
-            # variance = err
-            # sigma = np.sqrt(variance)
-            sigma_norm = err
-            x = np.linspace(min_y, max_y, 500)
-            freq_fig.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=stats.norm.pdf(x, mu, sigma_norm),
-                    mode="lines",
-                    name="Gaussian",
-                )
-            )
-            """
-        if plot_residuals:
-            """
-            x = np.linspace(
-                stats.exponnorm.ppf(0.01, K), stats.exponnorm.ppf(0.99, K), 100
-            )
-            freq_fig.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=stats.exponnorm.pdf(x, K, loc=0, scale=sigma),
-                    mode="lines",
-                )
-            )
-            """
-            freq_fig.add_vline(
-                x=0,
-                fillcolor="black",
-                opacity=0.5,
-            )
-            # """
-            mu = 0
-            x = np.linspace(min_res, max_res, 500)
+            x = np.linspace(min_res, max_res, 1000)
             pdf = (
                 (lambd / 2)
                 * np.exp((lambd / 2) * (2 * mu + lambd * sigma**2 - 2 * x))
@@ -772,6 +767,9 @@ def freq_plot(
                         name="EMG",
                     )
                 )
+            )
+        else:
+            freq_fig.add_vline(x=x[0], fillcolor="red", opacity=0.5, name="mode")
 
     y_label = figure_type
     if np.sum(ln_y_axis) == 1:
