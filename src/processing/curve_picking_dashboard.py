@@ -50,15 +50,8 @@ app.layout = [
         options=[
             {"label": "plot residuals", "value": True},
         ],
-        value=[True],
+        value=[],
         id="plot_residuals",
-    ),
-    dcc.Checklist(
-        options=[
-            {"label": "show curve", "value": True},
-        ],
-        value=[True],
-        id="show_curve",
     ),
     dcc.Checklist(
         options=[
@@ -80,14 +73,6 @@ app.layout = [
         id="freq_slider",
     ),
     dcc.Graph(id="frequency_dist_figure"),
-    dcc.Markdown("Mu"),
-    dcc.Slider(
-        min=-2,
-        max=2,
-        step=0.1,
-        value=0,
-        id="mu_slider",
-    ),
     dcc.Markdown("Sigma"),
     dcc.Slider(
         min=0,
@@ -125,6 +110,7 @@ app.layout = [
     Input(component_id="plot_residuals", component_property="value"),
     Input(component_id="transverse_comp", component_property="value"),
     Input(component_id="ln_y_axis", component_property="value"),
+    Input(component_id="show_err_dist", component_property="value"),
     Input(component_id="n_bins", component_property="value"),
     Input(component_id="freq_slider", component_property="value"),
     Input(component_id="mu_slider", component_property="value"),
@@ -139,6 +125,7 @@ def update_dispersion_curve(
     plot_residuals,
     transverse_comp,
     ln_y_axis,
+    show_err_dist,
     n_bins,
     selected_freq,
     mu,
@@ -155,6 +142,7 @@ def update_dispersion_curve(
     plot_residuals = np.sum(plot_residuals) == 1
     transverse_comp = np.sum(transverse_comp) == 1
     ln_y_axis = np.sum(ln_y_axis) == 1
+    show_err_dist = np.sum(show_err_dist) == 1
 
     max_path, curve_path, polygon_path = get_path(
         site, transverse_comp, figure_type, ln_y_axis
@@ -222,6 +210,7 @@ def update_dispersion_curve(
         curve_df,
         selected_freq,
         ln_y_axis,
+        show_err_dist,
         n_bins,
         mu,
         sigma,
@@ -569,7 +558,7 @@ def pyplot_hist(
     y_curve = curve_df["vels"]
     if ln_y_axis and figure_type == "velocity":
         y_curve = np.log(y_curve)
-    elif ln_y_axis and figure_type == "slowness":
+    elif not ln_y_axis and figure_type == "slowness":
         y_curve = np.exp(y_curve)
 
     if plot_residuals:
@@ -675,6 +664,7 @@ def freq_plot(
     curve_df,
     selected_freq,
     ln_y_axis,
+    show_err_dist,
     n_bins,
     mu,
     sigma,
@@ -752,7 +742,7 @@ def freq_plot(
     x = y_curve[inds].values
     if len(x) == 1:
 
-        if (not ln_y_axis and figure_type == "velocity") or (
+        if ((not ln_y_axis and figure_type == "velocity") or (
             ln_y_axis and figure_type == "slowness"
         ):
             # err = curve_df["stds"][inds]
@@ -761,34 +751,21 @@ def freq_plot(
             # freq_fig.add_vline(x=x[0] - err, fillcolor="black", opacity=0.5, name="std")
             # freq_fig.add_vline(x=x[0] + err, fillcolor="black", opacity=0.5, name="std")
 
-            pass
-
-        if plot_residuals:
-            """
-            x = np.linspace(
-                stats.exponnorm.ppf(0.01, K), stats.exponnorm.ppf(0.99, K), 100
-            )
-            freq_fig.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=stats.exponnorm.pdf(x, K, loc=0, scale=sigma),
-                    mode="lines",
-                )
-            )
-            """
             x = np.linspace(min_res, max_res, 1000)
             pdf = (
                 (lambd / 2)
                 * np.exp((lambd / 2) * (2 * mu + lambd * sigma**2 - 2 * x))
                 * (1 - special.erf((mu + lambd * sigma**2 - x) / (np.sqrt(2) * sigma)))
             )
-            freq_fig.add_trace(
-                go.Scatter(
-                    x=x,
-                    # y=stats.exponnorm.pdf(x, K, loc=0, scale=sigma),
-                    y=scale * pdf,
-                    mode="lines",
-                    name="EMG",
+            if show_err_dist:
+                freq_fig.add_trace(
+                    go.Scatter(
+                        x=x,
+                        # y=stats.exponnorm.pdf(x, K, loc=0, scale=sigma),
+                        y=scale * pdf,
+                        mode="lines",
+                        name="EMG",
+                    )
                 )
             )
         else:

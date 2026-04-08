@@ -196,6 +196,7 @@ class CurvePicking:
                 "stds": self.plot_stds,
             }
         )
+        """
         df.to_csv(
             "./results/curves/curve-" + site + "-" + component + "-" + y_domain + "-" + str(ln_data) ".csv"
         )
@@ -213,7 +214,7 @@ class CurvePicking:
             "w",
         ) as f:
             f.write(str(self.verts))
-
+        """
         self.poly.disconnect_events()
         self.canvas.draw_idle()
 
@@ -267,8 +268,8 @@ class CurvePicking:
         if ln_data:
             y_grid = np.log(y_grid)
 
-        # y_bins = np.logspace(np.log10(np.min(y_grid)), np.log10(np.max(y_grid)), n_bins)
-        y_bins = np.linspace(np.min(y_grid), np.max(y_grid), n_bins)
+        y_bins = np.logspace(np.log10(np.min(y_grid)), np.log10(np.max(y_grid)), n_bins)
+        # y_bins = np.linspace(np.min(y_grid), np.max(y_grid), n_bins)
 
         fig, ax = plt.subplots(figsize=(10, 5))
 
@@ -285,7 +286,7 @@ class CurvePicking:
         )
 
         plt.xscale("log")
-        # plt.yscale("log")
+        plt.yscale("log")
         # plt.ylim([100, 2200])
 
         if y_domain == "velocity":
@@ -354,11 +355,11 @@ class CurvePicking:
 
 
 if __name__ == "__main__":
-    site = "WH04"
-    # component = "vertical"
-    component = "transverse"
-    y_domain = "slowness"
-    ln_data = True
+    site = "WH01"
+    component = "vertical"
+    # component = "transverse"
+    y_domain = "velocity"
+    ln_data = False
 
     selector = CurvePicking(site, component, y_domain, ln_data)
 
