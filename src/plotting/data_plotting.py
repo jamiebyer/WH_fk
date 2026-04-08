@@ -13,10 +13,9 @@ from matplotlib.gridspec import GridSpec
 import matplotlib.image as img
 import xarray as xr
 
-#import sys
-
-#sys.path.append("../src/")
-#from fk_processing.dispersion_curves import compute_dispersion_curve, setup_data
+# import sys
+# sys.path.append("../src/")
+from processing.dispersion_curves import compute_dispersion_curve, setup_data
 
 from matplotlib.colors import LogNorm
 
@@ -36,6 +35,7 @@ import os
 
 
 # DATA
+
 
 def read_max_file(max_file):
     """
@@ -73,7 +73,6 @@ def read_max_file(max_file):
     # read ".max" file as dataframe
     df = pd.read_csv(max_file, skiprows=ind, sep="\s+", names=names)
     return df
-
 
 
 def combine_mseed_files():
@@ -953,7 +952,9 @@ def plot_paper_dispersion_curves():
     fig.savefig(path, dpi=600)
 
 
-def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_filename=""):
+def plot_full_results(
+    input_ds, results_ds, site, n_bins=100, save=False, out_filename=""
+):
     """
     plot results for paper.
     subplots
@@ -965,10 +966,7 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
     # n_burn = input_ds.attrs["n_burn"]
     n_burn = int(len(results_ds["step"]) / 3)
     # cut results by step
-    results_ds = results_ds.copy().isel(
-        step=slice(n_burn, len(results_ds["step"]))
-    )
-
+    results_ds = results_ds.copy().isel(step=slice(n_burn, len(results_ds["step"])))
 
     # read in site locations as png?
 
@@ -986,15 +984,12 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
 
     # PLOT SITE LOCATION
     # reading png image file
-    path = (
-        "./results/maps/" + site + "_map.png"
-    )
+    path = "./results/maps/" + site + "_map.png"
     # path = "/home/jbyer/Documents/uoc/repos/mapping/Get_Site_Locations_Jamie/WH02_map.png"
     im = img.imread(path)
     # show image
     ax1.imshow(im)
     ax1.axis("off")
-
 
     # PLOT DATA
     freqs = 1 / input_ds["period"]
@@ -1008,13 +1003,13 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
     hist_freqs = np.repeat(freqs, results_ds["data_pred"].shape[1])
     data_preds = results_ds["data_pred"].values.flatten() * 1000
 
-    # histogram on log scale. 
+    # histogram on log scale.
     # Use non-equal bin sizes, such that they look equal on log scale.
     bin_freqs = np.flip(freqs)
-    logbins = np.logspace(np.log10(2), np.log10(13), len(freqs)+1)
+    logbins = np.logspace(np.log10(2), np.log10(13), len(freqs) + 1)
 
     # make freq bins from full grid
-    max_path = "./data/"+site+"/max_files/"+site+"_fine.max"
+    max_path = "./data/" + site + "/max_files/" + site + "_fine.max"
     df_max = read_max_file(max_path)
     freqs_grid = df_max["frequency"].values
     vels_grid = 1 / df_max["slowness"].values
@@ -1035,23 +1030,21 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
         label="data_obs",
     )
 
-
-    #1.1144065354855293 14.599243307112378
-    #1.0 14.599243307112378
-    #201.0253891072783 1999.3442414661472
-    #201.02734987527654 1998.2952843920082
+    # 1.1144065354855293 14.599243307112378
+    # 1.0 14.599243307112378
+    # 201.0253891072783 1999.3442414661472
+    # 201.02734987527654 1998.2952843920082
 
     ax2.set_xscale("log")
     ax2.set_yscale("log")
     ax2.set_xlabel("Frequency (Hz)", fontsize=20)
     ax2.set_ylabel("Phase velocity (m/s)", fontsize=20)
-    ax2.tick_params(axis='both', which='major', labelsize=18)
+    ax2.tick_params(axis="both", which="major", labelsize=18)
 
     for axis in [ax2.xaxis, ax2.yaxis]:
         formatter = ScalarFormatter()
         formatter.set_scientific(False)
         axis.set_major_formatter(formatter)
-
 
     ax2.set_xlim([2, 14.6])
     ax2.set_ylim([200, 2000])
@@ -1145,7 +1138,7 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
     ax3.yaxis.tick_right()
 
     ax3.set_xlabel("Shear velocity (m/s)", fontsize=20)
-    ax3.tick_params(axis='both', which='major', labelsize=18)
+    ax3.tick_params(axis="both", which="major", labelsize=18)
 
     # plot depth histogram
     for ind in range(input_ds.attrs["n_layers"]):
@@ -1165,13 +1158,12 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
     ax4.set_xticks(np.arange(0, 0.576, 0.025), minor=True)
     ax4.set_yticks([0, 20, 40, 60, 80, 100, 120])
     ax4.set_yticks(np.arange(0, 120, 5), minor=True)
-    ax4.tick_params(axis='both', which='major', labelsize=18)
+    ax4.tick_params(axis="both", which="major", labelsize=18)
     ax4.yaxis.tick_right()
     ax4.grid()
     ax4.grid(which="minor", alpha=0.3)
 
     ax4.set_ylim(ax4.get_ylim()[::-1])
-
 
     ax1.text(1500, 0.5, "a)", c="k", fontsize=20)
     ax2.text(13, 1600, "b)", fontsize=20)
@@ -1179,18 +1171,24 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
     ax4.text(0.03, 122, "d)", fontsize=20)
 
     if save:
-        plt.savefig("figures/" + out_filename + "/results-" + out_filename + ".pdf", dpi=600)
+        plt.savefig(
+            "figures/" + out_filename + "/results-" + out_filename + ".pdf", dpi=600
+        )
     else:
         plt.show()
 
 
+<<<<<<< HEAD
 
 def plot_vs30(
     file_names
 ):
+=======
+def plot_vs30(file_names):
+>>>>>>> 9302e91da1f04f2deafb4e4532b8b836a863d706
     """
     Vs30 = sum(d_i)/sum(t_i) = 30/sum(d_i/v_i)
-    
+
     Description	VS30 range (m/s)
     Hard rock	1500
     Rock	760-1500
@@ -1207,12 +1205,10 @@ def plot_vs30(
         results_ds = xr.open_dataset(results_path)
 
         # n_burn = input_ds.attrs["n_burn"]
-        n_burn = int(len(results_ds["step"])/3)
+        n_burn = int(len(results_ds["step"]) / 3)
 
         # cut results by step
-        results_ds = results_ds.copy().isel(
-            step=slice(n_burn, len(results_ds["step"]))
-        )
+        results_ds = results_ds.copy().isel(step=slice(n_burn, len(results_ds["step"])))
 
         # use results_ds to get model params
         model_params = results_ds["model_params"].values
@@ -1229,7 +1225,8 @@ def plot_vs30(
             (
                 np.zeros((1, n_steps)),
                 depth,
-                np.full((1, n_steps), np.max(depth_bounds[:, 1])) * 1000,  # unit conversion
+                np.full((1, n_steps), np.max(depth_bounds[:, 1]))
+                * 1000,  # unit conversion
             ),
             axis=0,
         )
@@ -1245,7 +1242,7 @@ def plot_vs30(
             # find first depth after 30 m
             depth_diff = depth_plotting[:, step_ind] - depth_boundary
             depth_diff[depth_diff < 0] = np.inf
-            
+
             # smallest positive number
             layer_ind = np.argmin(depth_diff)
             depth_plotting[layer_ind] = depth_boundary
@@ -1256,12 +1253,11 @@ def plot_vs30(
             )
 
             Vs30 = depth_boundary / np.sum(
-                thickness[: layer_ind + 1] / vel_s[: layer_ind, step_ind]
+                thickness[: layer_ind + 1] / vel_s[:layer_ind, step_ind]
             )
             Vs30_list.append(Vs30)
 
         plt.hist(np.array(Vs30_list) * 1000, bins=30, density=True, alpha=0.5)
-
 
     classes = [
         # ["A", "Hard\nrock", 1500, 1550],
@@ -1294,16 +1290,12 @@ def plot_vs30(
 
     # plt.savefig("figures/vs10.png")
     plt.savefig("figures/vs30.png")
-    
 
 
-
-def plot_vs30_subplots(
-    file_names
-):
+def plot_vs30_subplots(file_names):
     """
     Vs30 = sum(d_i)/sum(t_i) = 30/sum(d_i/v_i)
-    
+
     Description	VS30 range (m/s)
     Hard rock	1500
     Rock	760-1500
@@ -1322,12 +1314,10 @@ def plot_vs30_subplots(
         results_ds = xr.open_dataset(results_path)
 
         # n_burn = input_ds.attrs["n_burn"]
-        n_burn = int(len(results_ds["step"])/3)
+        n_burn = int(len(results_ds["step"]) / 3)
 
         # cut results by step
-        results_ds = results_ds.copy().isel(
-            step=slice(n_burn, len(results_ds["step"]))
-        )
+        results_ds = results_ds.copy().isel(step=slice(n_burn, len(results_ds["step"])))
 
         # use results_ds to get model params
         model_params = results_ds["model_params"].values
@@ -1344,7 +1334,8 @@ def plot_vs30_subplots(
             (
                 np.zeros((1, n_steps)),
                 depth,
-                np.full((1, n_steps), np.max(depth_bounds[:, 1])) * 1000,  # unit conversion
+                np.full((1, n_steps), np.max(depth_bounds[:, 1]))
+                * 1000,  # unit conversion
             ),
             axis=0,
         )
@@ -1359,7 +1350,7 @@ def plot_vs30_subplots(
             # find first depth after 30 m
             depth_diff = depth_plotting[:, step_ind] - depth_boundary
             depth_diff[depth_diff < 0] = np.inf
-            
+
             # smallest positive number
             layer_ind = np.argmin(depth_diff)
             depth_plotting[layer_ind] = depth_boundary
@@ -1370,12 +1361,11 @@ def plot_vs30_subplots(
             )
 
             Vs10 = depth_boundary / np.sum(
-                thickness[: layer_ind + 1] / vel_s[: layer_ind, step_ind]
+                thickness[: layer_ind + 1] / vel_s[:layer_ind, step_ind]
             )
             Vs10_list.append(Vs10)
 
         ax[0].hist(np.array(Vs10_list) * 1000, bins=10, density=True, alpha=0.5)
-
 
     for file_name in file_names:
         input_path = "./results/inversion/input-" + file_name + ".nc"
@@ -1385,12 +1375,10 @@ def plot_vs30_subplots(
         results_ds = xr.open_dataset(results_path)
 
         # n_burn = input_ds.attrs["n_burn"]
-        n_burn = int(len(results_ds["step"])/3)
+        n_burn = int(len(results_ds["step"]) / 3)
 
         # cut results by step
-        results_ds = results_ds.copy().isel(
-            step=slice(n_burn, len(results_ds["step"]))
-        )
+        results_ds = results_ds.copy().isel(step=slice(n_burn, len(results_ds["step"])))
 
         # use results_ds to get model params
         model_params = results_ds["model_params"].values
@@ -1407,7 +1395,8 @@ def plot_vs30_subplots(
             (
                 np.zeros((1, n_steps)),
                 depth,
-                np.full((1, n_steps), np.max(depth_bounds[:, 1])) * 1000,  # unit conversion
+                np.full((1, n_steps), np.max(depth_bounds[:, 1]))
+                * 1000,  # unit conversion
             ),
             axis=0,
         )
@@ -1422,7 +1411,7 @@ def plot_vs30_subplots(
             # find first depth after 30 m
             depth_diff = depth_plotting[:, step_ind] - depth_boundary
             depth_diff[depth_diff < 0] = np.inf
-            
+
             # smallest positive number
             layer_ind = np.argmin(depth_diff)
             depth_plotting[layer_ind] = depth_boundary
@@ -1433,7 +1422,7 @@ def plot_vs30_subplots(
             )
 
             Vs30 = depth_boundary / np.sum(
-                thickness[: layer_ind + 1] / vel_s[: layer_ind, step_ind]
+                thickness[: layer_ind + 1] / vel_s[:layer_ind, step_ind]
             )
             Vs30_list.append(Vs30)
 
@@ -1458,7 +1447,7 @@ def plot_vs30_subplots(
 
     ax[1].set_xlabel("Vs30 (m/s)")
     plt.setp(ax[1].get_yticklabels(), visible=False)
-    #ax[1].set_ylabel("Probability")
+    # ax[1].set_ylabel("Probability")
 
     # plt.xlim([0, 760])
     ax[0].set_xlim([100, 450])
@@ -1486,6 +1475,29 @@ def plot_vs30_subplots(
     plt.savefig("figures/vs30_subplots.pdf")
 
 
+<<<<<<< HEAD
+=======
+if __name__ == "__main__":
+    site = "WH01"
+    if site == "WH01":
+        file_name = "1762299408"  # WH01
+    elif site == "WH02":
+        file_name = "1762299506"  # WH02
+
+    input_path = "./results/inversion/input-" + file_name + ".nc"
+    results_path = "./results/inversion/results-" + file_name + ".nc"
+
+    input_ds = xr.open_dataset(input_path)
+    results_ds = xr.open_dataset(results_path)
+
+    plot_full_results(
+        input_ds, results_ds, site=site, n_bins=300, save=True, out_filename=file_name
+    )
+
+    # plot_vs30_subplots(["1762299408", "1762299506"])
+
+
+>>>>>>> 9302e91da1f04f2deafb4e4532b8b836a863d706
 def plot_computed_dispersion_curve_curr(max_path):
     """
     Plot dispersion curve from max file.
@@ -1560,6 +1572,97 @@ def plot_computed_dispersion_curve_curr(max_path):
     # path = "./figures/WH01/3C/rtbf-WH01-test01.png"
     plt.savefig(path)
     # plt.show()
+
+
+def plot_slowness(max_path, curve_path):
+    """
+    Plot dispersion curve from max file.
+    """
+    df_max = read_max_file(max_path)
+    freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = compute_dispersion_curve(
+        df_max,
+    )
+
+    slow_grid = np.log(1 / vels_grid)
+
+    freq_bins = np.logspace(
+        np.log10(np.min(freqs_grid)), np.log10(np.max(freqs_grid)), len(freqs) + 1
+    )
+    # vel_bins = np.logspace(
+    #     np.log10(np.min(vels_grid)), np.log10(np.max(vels_grid)), len(vel_meds) + 1
+    # )
+    # slowness_bins = np.logspace(
+    #     np.log10(np.min(1 / vels_grid)),
+    #     np.log10(np.max(1 / vels_grid)),
+    #     len(vel_meds) + 1,
+    # )
+    slowness_bins = np.linspace(np.min(slow_grid), np.max(slow_grid), len(freqs) + 1)
+
+    fig, ax1 = plt.subplots(figsize=(10, 5))
+
+    # plot frequency and velocity 2D histogram
+    # """
+    plt.hist2d(
+        freqs_grid,
+        np.log(1 / vels_grid),
+        bins=[
+            freq_bins,
+            slowness_bins,
+        ],
+        cmap="coolwarm",
+        norm=LogNorm(),
+    )
+    # """
+
+    df = pd.read_csv(curve_path)
+
+    percent_err = 100 * (df["stds"] / df["vels"])
+    curve = np.log(1 / df["vels"])
+    new_err = np.abs((percent_err / 100) * curve)
+
+    plt.errorbar(
+        df["freqs"],
+        curve,
+        # yerr=new_err,
+        marker="o",
+        markersize=2,
+        c="black",
+    )
+
+    plt.xscale("log")
+    # plt.yscale("log")
+    # plt.ylim([100, 2200])
+    # plt.ylim([50, 2200])
+    # plt.ylim([0, 0.0220])
+
+    plt.xlabel("frequency (Hz)")
+    plt.ylabel("ln(slowness)")
+
+    # plt.colorbar(label="counts")
+
+    # plot dispersion curve with errors
+    # plt.plot(freqs_curve, vels_curve)
+
+    for axis in [ax1.xaxis, ax1.yaxis]:
+        formatter = ScalarFormatter()
+        formatter.set_scientific(False)
+        axis.set_major_formatter(formatter)
+
+    plt.grid(True)
+
+    # plt.title(
+    #    "\nPERIOD_COUNT=20, WINDOW_OVERLAP (%)=50, ANTI-TRIGGERING_ON_RAW_SIGNAL (y/n)=n"
+    #    "\nSTATISTIC_COUNT=0, FREQ_BAND_WIDTH=0.10"
+    #    "\nGRID_STEP (rad/m)= 0.005, GRID_SIZE (rad/m)=2.00, N_MAXIMA=0"
+    # )
+    plt.tight_layout()
+
+    path = "./figures/WH01/1C/slowness/conventional-WH01-log.png"
+    # path = "./figures/WH02/1C/conventional-WH02-default08.png"
+    # path = "./figures/WH04/2C/conventionaltransverse-WH04-longest-default03.png"
+    # path = "./figures/WH01/3C/rtbf-WH01-test01.png"
+    # plt.savefig(path)
+    plt.show()
 
 
 def plot_double_dispersion_curves(max_paths):
@@ -1710,10 +1813,10 @@ def plot_curve_picking():
         # "./results/curves/curve-WH01-1C.csv",
         # "./results/curves/curve-WH02-1C.csv",
         # "./results/curves/curve-WH03-1C.csv",
-        "./results/curves/curve-WH04-1C.csv",
-        # "./results/curves/curve-WH01-2C.csv",
-        # "./results/curves/curve-WH02-2C.csv",
-        # "./results/curves/curve-WH03-2C.csv",
+        # "./results/curves/curve-WH04-1C.csv",
+        "./results/curves/curve-WH01-2C.csv",
+        "./results/curves/curve-WH02-2C.csv",
+        "./results/curves/curve-WH03-2C.csv",
         "./results/curves/curve-WH04-2C.csv",
     ]
 
@@ -1728,11 +1831,14 @@ def plot_curve_picking():
     plt.xlabel("frequency (Hz)")
     plt.ylabel("velocity (m/s)")
 
+    plt.xlim([1, 50])
+    plt.ylim([50, 2200])
     plt.xscale("log")
     plt.yscale("log")
 
     # plt.legend(["WH01-1C", "WH02-1C", "WH03-1C", "WH04-1C"])
-    plt.legend(["WH04-1C", "WH04-2C"])
+    plt.legend(["WH01-2C", "WH02-2C", "WH03-2C", "WH04-2C"])
+    # plt.legend(["WH04-1C", "WH04-2C"])
     plt.show()
 
 
@@ -1740,4 +1846,7 @@ if __name__ == "__main__":
     # max_path = "./results/WH01/conventional-WH01-test02.max"
     # plot_computed_dispersion_curve_curr(max_path)
     pass
+<<<<<<< HEAD
 
+=======
+>>>>>>> 9302e91da1f04f2deafb4e4532b8b836a863d706

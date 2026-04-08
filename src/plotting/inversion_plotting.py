@@ -12,7 +12,7 @@ import sys
 
 sys.path.append("../mcmc/src/")
 
-from plotting.plot_dispersion_curve import *
+# from plotting.plot_dispersion_curve import *
 
 # import statsmodels.api as sm
 

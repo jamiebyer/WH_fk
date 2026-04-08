@@ -46,8 +46,8 @@ class CurvePicking:
         alpha value of 1 and non-selected points to *alpha_other*.
     """
 
-    def __init__(self):
-        ax, hist, freqs, vels = self.plot_figure()
+    def __init__(self, site, component, y_domain, ln_data):
+        ax, hist, freqs, vels = self.plot_figure(site, component, y_domain, ln_data)
         self.ax = ax
         self.hist_counts, self.x_bins, self.y_bins = hist[0], hist[1], hist[2]
 
@@ -171,7 +171,7 @@ class CurvePicking:
         # update figure data selection opacity / outline data
 
         self.scatter.set_offsets(curve)
-        self.adjustErrbarxy(
+        self.update_error_bar(
             self.errorbar, np.array(new_f), np.array(new_v), np.array(new_e)
         )
 
@@ -187,7 +187,7 @@ class CurvePicking:
 
         self.canvas.draw_idle()
 
-    def disconnect(self):
+    def disconnect(self, site, component, y_domain, ln_data):
         # save df of dispersion curve to file
         df = pd.DataFrame(
             {
@@ -196,27 +196,58 @@ class CurvePicking:
                 "stds": self.plot_stds,
             }
         )
-        df.to_csv("./results/curves/curve-WH04-2C.csv")
+        """
+        df.to_csv(
+            "./results/curves/curve-" + site + "-" + component + "-" + y_domain + "-" + str(ln_data) ".csv"
+        )
 
-        with open("./results/curves/curve-WH04-2C.txt", "w") as f:
+        with open(
+            "./results/curves/curve-"
+            + site
+            + "-"
+            + component
+            + "-"
+            + y_domain
+            + "-"
+            + str(ln_data)
+            + ".txt",
+            "w",
+        ) as f:
             f.write(str(self.verts))
-
+        """
         self.poly.disconnect_events()
         self.canvas.draw_idle()
 
-    def plot_figure(self):
-        # 1C
-        # max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
-        # max_path = "./results/fk/final/conventional-WH02_3C_split-default08.max"
-        # max_path = "./results/fk/final/conventional-WH03-default08.max"
-        # max_path = "./results/fk/final/conventional-WH04-longest-default08.max"
-        # 2C
-        # max_path = "./results/fk/final/conventionaltransverse-WH01-default04.max"
-        # max_path = "./results/fk/final/conventionaltransverse-WH02-default04.max"
-        # max_path = "./results/fk/final/conventionaltransverse-WH03-sliced-default04.max"
-        max_path = (
-            "./results/fk/final/conventionaltransverse-WH04-longest-default04.max"
-        )
+    def get_path(self, site, component):
+        if site == "WH01":
+            if component == "vertical":
+                max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
+            elif component == "transverse":
+                max_path = (
+                    "./results/fk/final/conventionaltransverse-WH01-default04.max"
+                )
+        elif site == "WH02":
+            if component == "vertical":
+                max_path = "./results/fk/final/conventional-WH02_3C_split-default08.max"
+            elif component == "transverse":
+                max_path = (
+                    "./results/fk/final/conventionaltransverse-WH02-default04.max"
+                )
+        elif site == "WH03":
+            if component == "vertical":
+                max_path = "./results/fk/final/conventional-WH03-default08.max"
+            elif component == "transverse":
+                max_path = "./results/fk/final/conventionaltransverse-WH03-sliced-default04.max"
+        elif site == "WH04":
+            if component == "vertical":
+                max_path = "./results/fk/final/conventional-WH04-longest-default08.max"
+            elif component == "transverse":
+                max_path = "./results/fk/final/conventionaltransverse-WH04-longest-default04.max"
+
+        return max_path
+
+    def plot_figure(self, site, component, y_domain, ln_data, n_bins=100):
+        max_path = self.get_path(site, component)
 
         df_max = read_max_file(max_path)
         freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = (
@@ -228,19 +259,27 @@ class CurvePicking:
         freq_bins = np.logspace(
             np.log10(np.min(freqs_grid)), np.log10(np.max(freqs_grid)), len(freqs) + 1
         )
-        vel_bins = np.logspace(
-            np.log10(np.min(vels_grid)), np.log10(np.max(vels_grid)), len(vel_meds) + 1
-        )
+
+        if y_domain == "velocity":
+            y_grid = vels_grid
+        elif y_domain == "slowness":
+            y_grid = 1 / vels_grid
+
+        if ln_data:
+            y_grid = np.log(y_grid)
+
+        y_bins = np.logspace(np.log10(np.min(y_grid)), np.log10(np.max(y_grid)), n_bins)
+        # y_bins = np.linspace(np.min(y_grid), np.max(y_grid), n_bins)
 
         fig, ax = plt.subplots(figsize=(10, 5))
 
         # plot frequency and velocity 2D histogram
         hist = plt.hist2d(
             freqs_grid,
-            vels_grid,
+            y_grid,
             bins=[
                 freq_bins,
-                vel_bins,
+                y_bins,
             ],
             cmap="coolwarm",
             norm=LogNorm(),
@@ -249,10 +288,23 @@ class CurvePicking:
         plt.xscale("log")
         plt.yscale("log")
         # plt.ylim([100, 2200])
-        plt.ylim([50, 2200])
+
+        if y_domain == "velocity":
+            if ln_data:
+                # plt.ylim([50, 2200])
+                plt.ylabel("ln(phase velocity)")
+            else:
+                plt.ylim([50, 2200])
+                plt.ylabel("phase velocity (m/s)")
+        elif y_domain == "slowness":
+            if ln_data:
+                # plt.ylim([50, 2200])
+                plt.ylabel("ln(slowness)")
+            else:
+                # plt.ylim([50, 2200])
+                plt.ylabel("slowness (s/m)")
 
         plt.xlabel("frequency (Hz)")
-        plt.ylabel("phase velocity (m/s)")
 
         plt.colorbar(label="counts")
 
@@ -268,16 +320,9 @@ class CurvePicking:
 
         plt.tight_layout()
 
-        # path = "./figures/WH02/1C/conventional-WH02-default08.png"
-        # path = "./figures/WH04/2C/conventionaltransverse-WH04-longest-default03.png"
-        # path = "./figures/WH01/3C/rtbf-WH01-test01.png"
-        # plt.savefig(path)
-        # plt.show()
+        return ax, hist, freqs_grid, y_grid
 
-        return ax, hist, freqs_grid, vels_grid
-
-    def adjustErrbarxy(self, errobj, x, y, y_error):
-
+    def update_error_bar(self, errobj, x, y, y_error):
         # ln, (errx_top, errx_bot, erry_top, erry_bot), (barsx, barsy) = errobj
         ln, caplines, (barsy) = errobj
         barsy = barsy[0]
@@ -310,16 +355,22 @@ class CurvePicking:
 
 
 if __name__ == "__main__":
-    selector = CurvePicking()
+    site = "WH01"
+    component = "vertical"
+    # component = "transverse"
+    y_domain = "velocity"
+    ln_data = False
 
-    print("Select points in the figure by enclosing them within a polygon.")
-    print("Press the 'esc' key to start a new polygon.")
-    print("Try holding the 'shift' key to move all of the vertices.")
-    print("Try holding the 'ctrl' key to move a single vertex.")
+    selector = CurvePicking(site, component, y_domain, ln_data)
+
+    # print("Select points in the figure by enclosing them within a polygon.")
+    # print("Press the 'esc' key to start a new polygon.")
+    # print("Try holding the 'shift' key to move all of the vertices.")
+    # print("Try holding the 'ctrl' key to move a single vertex.")
 
     plt.show()
 
-    selector.disconnect()
+    selector.disconnect(site, component, y_domain, ln_data)
 
     # After figure is closed print the coordinates of the selected polygon
     print("\nSelected polygon:")
