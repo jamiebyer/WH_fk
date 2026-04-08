@@ -15,13 +15,9 @@ import xarray as xr
 
 #import sys
 
-<<<<<<< HEAD
 #sys.path.append("../src/")
 #from fk_processing.dispersion_curves import compute_dispersion_curve, setup_data
-=======
-# sys.path.append("../src/")
-from processing.dispersion_curves import compute_dispersion_curve, setup_data
->>>>>>> 97e8a07e746e7c2736051883580c25a31c1bdcd0
+
 from matplotlib.colors import LogNorm
 
 from matplotlib.ticker import ScalarFormatter
@@ -33,16 +29,11 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-<<<<<<< HEAD
-# from fk_processing.dispersion_curves import read_max_file, read_txt_file
-from obspy import read
-=======
 from processing.dispersion_curves import read_max_file, read_txt_file
 import obspy
 from obspy import read, Stream, UTCDateTime
 import os
 
->>>>>>> 97e8a07e746e7c2736051883580c25a31c1bdcd0
 
 # DATA
 
@@ -1193,8 +1184,6 @@ def plot_full_results(input_ds, results_ds, site, n_bins=100, save=False, out_fi
         plt.show()
 
 
-<<<<<<< HEAD
-
 
 def plot_vs30(
     file_names
@@ -1497,31 +1486,6 @@ def plot_vs30_subplots(
     plt.savefig("figures/vs30_subplots.pdf")
 
 
-if __name__ == "__main__":
-    site = "WH01"
-    if site == "WH01":
-        file_name = "1762299408" # WH01
-    elif site == "WH02":
-        file_name = "1762299506" # WH02
-
-    input_path = (
-        "./results/inversion/input-"
-        + file_name
-        + ".nc"
-    )
-    results_path = (
-        "./results/inversion/results-"
-        + file_name
-        + ".nc"
-    )
-
-    input_ds = xr.open_dataset(input_path)
-    results_ds = xr.open_dataset(results_path)
-
-    plot_full_results(input_ds, results_ds, site=site, n_bins=300, save=True, out_filename=file_name)
-
-    # plot_vs30_subplots(["1762299408", "1762299506"])
-=======
 def plot_computed_dispersion_curve_curr(max_path):
     """
     Plot dispersion curve from max file.
@@ -1776,4 +1740,4 @@ if __name__ == "__main__":
     # max_path = "./results/WH01/conventional-WH01-test02.max"
     # plot_computed_dispersion_curve_curr(max_path)
     pass
->>>>>>> 97e8a07e746e7c2736051883580c25a31c1bdcd0
+
