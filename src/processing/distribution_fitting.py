@@ -83,8 +83,11 @@ def perform_grid_search(dist, min_res, max_res, data_x, data_y):
     # make coarse grid of params to search for first iteration.
     if dist == "normal":
         # Gaussian params
-        mu = np.linspace(-50, 50, 200)
-        sigma = np.linspace(0.001, 200, 200)
+        mu_min, mu_max = -150, 150
+        sigma_min, sigma_max = 0.001, 150
+
+        mu = np.linspace(mu_min, mu_max, 200)
+        sigma = np.linspace(sigma_min, sigma_max, 200)
         params = list(itertools.product(mu, sigma))
     elif dist == "log-normal":
         # log-normal params
@@ -93,19 +96,36 @@ def perform_grid_search(dist, min_res, max_res, data_x, data_y):
         params = list(itertools.product(mu, sigma))
     elif dist == "EMG":
         # EMG params
-        mu_min, mu_max = -100, 100
+        mu_min, mu_max = -150, 150
         sigma_min, sigma_max = 0.001, 150
         lambd_min, lambd_max = -3, 2
 
-        mu = np.linspace(mu_min, mu_max, 75)
+        mu = np.linspace(mu_min, mu_max, 100)
         sigma = np.linspace(sigma_min, sigma_max, 75)
         lambd = np.logspace(lambd_min, lambd_max, 30)
         params = list(itertools.product(mu, sigma, lambd))
+    elif dist == "asym-laplace":
+        # asymmetric laplacian params
+        mu_min, mu_max = -150, 150
+        lambd_min, lambd_max = -3, 3
+        kappa_min, kappa_max = -3, 1
+
+        mu = np.linspace(mu_min, mu_max, 100)
+        lambd = np.logspace(lambd_min, lambd_max, 60)
+        kappa = np.logspace(kappa_min, kappa_max, 60)
+        params = list(itertools.product(mu, lambd, kappa))
 
     best_params = get_best_params(params, dist, min_res, max_res, data_x, data_y)
 
     # define range for fine grid based on values for params
-    if dist == "EMG":
+    if dist == "normal":
+        mu_min, mu_max = best_params[0] * 0.95, best_params[0] * 1.05
+        sigma_min, sigma_max = best_params[1] * 0.95, best_params[1] * 1.05
+
+        mu_fine = np.linspace(mu_min, mu_max, 60)
+        sigma_fine = np.linspace(sigma_min, sigma_max, 60)
+        params = list(itertools.product(mu_fine, sigma_fine))
+    elif dist == "EMG":
         mu_min, mu_max = best_params[0] * 0.95, best_params[0] * 1.05
         sigma_min, sigma_max = best_params[1] * 0.95, best_params[1] * 1.05
         lambd_min, lambd_max = best_params[2] * 0.95, best_params[2] * 1.05
@@ -115,6 +135,16 @@ def perform_grid_search(dist, min_res, max_res, data_x, data_y):
         # lambd = np.logspace(-3, 2, 30)
         lambd_fine = np.linspace(lambd_min, lambd_max, 40)
         params = list(itertools.product(mu_fine, sigma_fine, lambd_fine))
+    elif dist == "asym-laplace":
+        mu_min, mu_max = best_params[0] * 0.95, best_params[0] * 1.05
+        lambd_min, lambd_max = best_params[1] * 0.95, best_params[1] * 1.05
+        kappa_min, kappa_max = best_params[2] * 0.95, best_params[2] * 1.05
+
+        mu_fine = np.linspace(mu_min, mu_max, 60)
+        lambd_fine = np.linspace(lambd_min, lambd_max, 40)
+        kappa_fine = np.linspace(kappa_min, kappa_max, 60)
+
+        params = list(itertools.product(mu_fine, lambd_fine, kappa_fine))
 
     # if the chosen params are one of the bounds, need to expand the range.
 
@@ -175,6 +205,14 @@ def get_distribution(dist, dist_params, min_res, max_res, data_x):
             -((np.log(data_x) - mu) ** 2) / (2 * sigma**2)
         )
         data_pred[np.isnan(data_pred)] = 0
+    elif dist == "asym-laplace":
+        mu, lambd, kappa = dist_params
+        s = np.sign(x - mu)
+        pdf = (lambd / (kappa + 1 / kappa)) * np.exp(-(x - mu) * lambd * s * kappa**s)
+        s = np.sign(data_x - mu)
+        data_pred = (lambd / (kappa + 1 / kappa)) * np.exp(
+            -(data_x - mu) * lambd * s * kappa**s
+        )
 
     # integrate distribution
     dx = x[1] - x[0]
@@ -350,5 +388,6 @@ if __name__ == "__main__":
     max_path, curve_path, polygon_path = get_path(site)
     df_max = read_max_file(max_path)
     freqs = np.unique(df_max["frequency"])
+    # print(len(freqs))
 
     distribution_fitting(site=site, selected_freq=3.4901715488706766, n_bins=50)
