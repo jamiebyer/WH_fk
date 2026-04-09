@@ -44,7 +44,7 @@ def setup_model(n_layers, site):
             bounds = {
                 "depth": np.array([[0.005, 0.050], [0.005, 0.200]]),  # km
                 "vel_s": np.array(
-                    [[0.100, 0.750], [0.200, 1.250], [0.500, 3.000]]
+                    [[0.100, 0.750], [0.200, 2.000], [0.500, 3.000]]
                 ),  # km/s
             }
         elif n_layers == 3:
@@ -59,7 +59,7 @@ def setup_model(n_layers, site):
                     [[0.005, 0.050], [0.005, 0.250], [0.005, 0.400]]
                 ),  # km
                 "vel_s": np.array(
-                    [[0.100, 0.750], [0.200, 1.500], [0.200, 2.500], [1.500, 4.000]]
+                    [[0.100, 0.750], [0.200, 2.000], [0.200, 2.000], [1.500, 4.000]]
                 ),  # km/s
             }
         elif n_layers == 4:
@@ -75,11 +75,11 @@ def setup_model(n_layers, site):
                 ),  # km
                 "vel_s": np.array(
                     [
-                        [0.100, 0.500],
-                        [0.200, 1.000],
+                        [0.100, 0.500], 
+                        [0.200, 2.000], 
+                        [0.200, 2.000], 
                         [0.200, 2.000],
-                        [1.500, 4.000],
-                        [1.500, 4.000],
+                        [1.500, 3.000],
                     ]
                 ),  # km/s
             }
@@ -103,10 +103,10 @@ def setup_model(n_layers, site):
                 "vel_s": np.array(
                     [
                         [0.100, 0.500],
-                        [0.200, 1.000],
-                        [0.200, 2.000],
-                        [1.500, 4.000],
-                        [1.500, 4.000],
+                        [0.200, 2.000], 
+                        [0.200, 2.000], 
+                        [0.200, 2.000], 
+                        [0.200, 2.000], 
                         [1.500, 4.000],
                     ]
                 ),  # km/s
@@ -167,11 +167,200 @@ def setup_model(n_layers, site):
                         [0.100, 1.000],
                         [0.200, 2.000],
                         [0.200, 2.000],
-                        [1.500, 4.000],
+                        [0.200, 2.000], 
                         [1.500, 4.000],
                     ]
                 ),  # km/s
             }
+        elif n_layers == 5:
+            proposal_width = {
+                "depth": 0.05,
+                "vel_s": 0.05,
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array(
+                    [[0.005, 0.125], [0.005, 0.125], [0.005, 0.400], [0.005, 0.400], [0.100, 0.400]]
+                ),  # km
+                "vel_s": np.array(
+                    [
+                        [0.100, 1.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000], 
+                        [1.500, 4.000],
+                    ]
+                ),  # km/s
+            }
+    elif site == "WH03":
+        if n_layers == 1:
+            proposal_width = {
+                "depth": 0.05,
+                "vel_s": [0.05, 0.15],
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array([0.001, 0.040]),  # km
+                "vel_s": np.array([[0.100, 0.750], [0.300, 1.500]]),  # km/s
+            }
+        elif n_layers == 2:
+            proposal_width = {
+                "depth": [0.05, 0.05],
+                "vel_s": [0.05, 0.05, 0.10],
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array([[0.005, 0.050], [0.005, 0.200]]),  # km
+                "vel_s": np.array(
+                    [[0.100, 0.750], [0.200, 1.000], [0.750, 3.000]]
+                ),  # km/s
+            }
+        elif n_layers == 3:
+            proposal_width = {
+                "depth": [0.05, 0.05, 0.05],
+                "vel_s": [0.05, 0.05, 0.05, 0.05],
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array(
+                    [[0.005, 0.075], [0.005, 0.125], [0.005, 0.400]]
+                ),  # km
+                "vel_s": np.array(
+                    [[0.100, 0.500], [0.200, 1.000], [0.200, 2.000], [1.500, 4.000]]
+                ),  # km/s
+            }
+        elif n_layers == 4:
+            proposal_width = {
+                "depth": 0.05,
+                "vel_s": 0.05,
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array(
+                    [[0.005, 0.125], [0.005, 0.125], [0.005, 0.400], [0.100, 0.400]]
+                ),  # km
+                "vel_s": np.array(
+                    [
+                        [0.100, 1.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000], 
+                        [1.500, 4.000],
+                    ]
+                ),  # km/s
+            }
+        elif n_layers == 5:
+            proposal_width = {
+                "depth": 0.05,
+                "vel_s": 0.05,
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array(
+                    [[0.005, 0.125], [0.005, 0.125], [0.005, 0.400], [0.005, 0.400], [0.100, 0.400]]
+                ),  # km
+                "vel_s": np.array(
+                    [
+                        [0.100, 1.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000], 
+                        [1.500, 4.000],
+                    ]
+                ),  # km/s
+            }
+    elif site == "WH04":
+        if n_layers == 1:
+            proposal_width = {
+                "depth": 0.05,
+                "vel_s": [0.05, 0.15],
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array([0.001, 0.040]),  # km
+                "vel_s": np.array([[0.100, 0.750], [0.300, 1.500]]),  # km/s
+            }
+        elif n_layers == 2:
+            proposal_width = {
+                "depth": [0.05, 0.05],
+                "vel_s": [0.05, 0.05, 0.10],
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array([[0.005, 0.050], [0.005, 0.200]]),  # km
+                "vel_s": np.array(
+                    [[0.100, 0.750], [0.200, 1.000], [0.750, 3.000]]
+                ),  # km/s
+            }
+        elif n_layers == 3:
+            proposal_width = {
+                "depth": [0.05, 0.05, 0.05],
+                "vel_s": [0.05, 0.05, 0.05, 0.05],
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array(
+                    [[0.005, 0.075], [0.005, 0.125], [0.005, 0.400]]
+                ),  # km
+                "vel_s": np.array(
+                    [[0.100, 0.500], [0.200, 1.000], [0.200, 2.000], [1.500, 4.000]]
+                ),  # km/s
+            }
+        elif n_layers == 4:
+            proposal_width = {
+                "depth": 0.05,
+                "vel_s": 0.05,
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array(
+                    [[0.005, 0.125], [0.005, 0.125], [0.005, 0.400], [0.100, 0.400]]
+                ),  # km
+                "vel_s": np.array(
+                    [
+                        [0.100, 1.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000], 
+                        [1.500, 4.000],
+                    ]
+                ),  # km/s
+            }
+        elif n_layers == 5:
+            proposal_width = {
+                "depth": 0.05,
+                "vel_s": 0.05,
+            }  # fractional step size (multiplied by param bounds width)
+
+            # set up data and inversion params
+            bounds = {
+                "depth": np.array(
+                    [[0.005, 0.125], [0.005, 0.125], [0.005, 0.400], [0.005, 0.400], [0.100, 0.400]]
+                ),  # km
+                "vel_s": np.array(
+                    [
+                        [0.100, 1.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000], 
+                        [1.500, 4.000],
+                    ]
+                ),  # km/s
+            }
+
 
     model_params_kwargs = {
         "n_layers": n_layers,
@@ -233,14 +422,13 @@ def run_inversion():
     sample_prior = False
     set_starting_model = False
     rotate = False
-    n_layers = 2
+    n_layers = 5
 
     inversion, model_params = basic_inversion(
         n_layers=n_layers,
         sample_prior=sample_prior,
         set_starting_model=set_starting_model,
-        # site="WH01",
-        site="WH02",
+        site="WH04",
     )
     inversion.random_walk(
         model_params,
@@ -251,6 +439,10 @@ def run_inversion():
 
 if __name__ == "__main__":
 
+<<<<<<< HEAD
+    run_inversion()
+    
+=======
     # max_path = "./results/fk/WH04/1C/conventional-WH04-longest-default08.max"
     # max_path = "./results/fk/WH04/2C/conventionaltransverse-WH04-longest-default03.max"
     # max_path = "./results/WH01/3C/rtbf-WH01-test01.max"
@@ -281,3 +473,4 @@ if __name__ == "__main__":
     plot_curve_picking()
 
     # run_inversion()
+>>>>>>> 9302e91da1f04f2deafb4e4532b8b836a863d706

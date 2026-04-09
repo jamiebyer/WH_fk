@@ -16,6 +16,7 @@ import xarray as xr
 # import sys
 # sys.path.append("../src/")
 from processing.dispersion_curves import compute_dispersion_curve, setup_data
+
 from matplotlib.colors import LogNorm
 
 from matplotlib.ticker import ScalarFormatter
@@ -27,8 +28,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# from fk_processing.dispersion_curves import read_max_file, read_txt_file
-from obspy import read
 from processing.dispersion_curves import read_max_file, read_txt_file
 import obspy
 from obspy import read, Stream, UTCDateTime
@@ -1179,7 +1178,14 @@ def plot_full_results(
         plt.show()
 
 
+<<<<<<< HEAD
+
+def plot_vs30(
+    file_names
+):
+=======
 def plot_vs30(file_names):
+>>>>>>> 9302e91da1f04f2deafb4e4532b8b836a863d706
     """
     Vs30 = sum(d_i)/sum(t_i) = 30/sum(d_i/v_i)
 
@@ -1469,6 +1475,8 @@ def plot_vs30_subplots(file_names):
     plt.savefig("figures/vs30_subplots.pdf")
 
 
+<<<<<<< HEAD
+=======
 if __name__ == "__main__":
     site = "WH01"
     if site == "WH01":
@@ -1489,6 +1497,7 @@ if __name__ == "__main__":
     # plot_vs30_subplots(["1762299408", "1762299506"])
 
 
+>>>>>>> 9302e91da1f04f2deafb4e4532b8b836a863d706
 def plot_computed_dispersion_curve_curr(max_path):
     """
     Plot dispersion curve from max file.
@@ -1837,3 +1846,7 @@ if __name__ == "__main__":
     # max_path = "./results/WH01/conventional-WH01-test02.max"
     # plot_computed_dispersion_curve_curr(max_path)
     pass
+<<<<<<< HEAD
+
+=======
+>>>>>>> 9302e91da1f04f2deafb4e4532b8b836a863d706
