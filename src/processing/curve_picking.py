@@ -46,20 +46,28 @@ class CurvePicking:
         alpha value of 1 and non-selected points to *alpha_other*.
     """
 
-    def __init__(self, site, component, y_domain, ln_data):
-        ax, hist, freqs, vels = self.plot_figure(site, component, y_domain, ln_data)
+    def __init__(self, site, component, y_domain, ln_data, n_bins=150):
+        self.site = site
+        self.component = component
+        self.y_domain = y_domain
+        self.ln_data = ln_data
+        self.n_bins = n_bins
+
+        fig, ax = plt.subplots(ncols=1, nrows=2, sharex=True, figsize=(10, 5))
         self.ax = ax
+
+        hist, freqs, vels = self.plot_figure()
         self.hist_counts, self.x_bins, self.y_bins = hist[0], hist[1], hist[2]
 
         # scatter plot for dispersion curve
-        self.scatter = self.ax.scatter([], [], c="black", s=3)
-        self.errorbar = self.ax.errorbar([], [], yerr=[], c="black")
+        self.scatter = self.ax[0].scatter([], [], c="black", s=3)
+        self.errorbar = self.ax[0].errorbar([], [], yerr=[], c="black")
         self.plot_freqs, self.plot_vels, self.plot_stds = [], [], []
 
         # use np where to find inds of histogram
         # get max from hist counts
 
-        self.canvas = ax.figure.canvas
+        self.canvas = ax[0].figure.canvas
         # self.collection = collection
 
         self.freqs = freqs.values
@@ -100,7 +108,9 @@ class CurvePicking:
         """
 
         # Polygon selection
-        self.poly = PolygonSelector(ax, self.onselect)  # , draw_bounding_box=True)
+        self.poly = PolygonSelector(
+            self.ax[0], self.onselect
+        )  # , draw_bounding_box=True)
         self.verts = []
 
     def onselect(self, verts):
@@ -113,23 +123,6 @@ class CurvePicking:
                 for i in range(len(self.bins))
             ]
         )
-
-        # should be able to get the exact val for freq and velocity
-        # check for if there's no max / multiple
-        """
-        curve = []
-        for row_ind, selected_row in enumerate(selected_inds.T):
-            if np.sum(selected_row > 0):
-
-                max_ind = np.argmax(self.hist_counts[row_ind][selected_row])
-
-                f = (self.x_bins[row_ind] + self.x_bins[row_ind + 1]) / 2
-                v = (
-                    self.y_bins[:-1][selected_row][max_ind]
-                    + self.y_bins[1:][selected_row][max_ind]
-                ) / 2
-                curve.append([f, v])
-        """
 
         curve = []
         new_f, new_v, new_e = [], [], []
@@ -171,9 +164,9 @@ class CurvePicking:
         # update figure data selection opacity / outline data
 
         self.scatter.set_offsets(curve)
-        self.update_error_bar(
-            self.errorbar, np.array(new_f), np.array(new_v), np.array(new_e)
-        )
+        # self.update_error_bar(
+        #     self.errorbar, np.array(new_f), np.array(new_v), np.array(new_e)
+        # )
 
         self.plot_freqs, self.plot_vels, self.plot_stds = (
             np.array(new_f),
@@ -181,9 +174,7 @@ class CurvePicking:
             np.array(new_e),
         )
 
-        # set the opacity of bins/polygons which are not fully contained within the polyon selector
-
-        # self.patches.set_visible(selected_inds.flatten())
+        self.plot_residuals(polygon)
 
         self.canvas.draw_idle()
 
@@ -193,12 +184,20 @@ class CurvePicking:
             {
                 "freqs": self.plot_freqs,
                 "vels": self.plot_vels,
-                "stds": self.plot_stds,
+                # "stds": self.plot_stds,
             }
         )
-        """
+
         df.to_csv(
-            "./results/curves/curve-" + site + "-" + component + "-" + y_domain + "-" + str(ln_data) ".csv"
+            "./results/curves/curve-"
+            + site
+            + "-"
+            + component
+            + "-"
+            + y_domain
+            + "-"
+            + str(ln_data)
+            + ".csv"
         )
 
         with open(
@@ -214,42 +213,42 @@ class CurvePicking:
             "w",
         ) as f:
             f.write(str(self.verts))
-        """
+
         self.poly.disconnect_events()
         self.canvas.draw_idle()
 
-    def get_path(self, site, component):
-        if site == "WH01":
-            if component == "vertical":
+    def get_path(self):
+        if self.site == "WH01":
+            if self.component == "vertical":
                 max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
-            elif component == "transverse":
+            elif self.component == "transverse":
                 max_path = (
                     "./results/fk/final/conventionaltransverse-WH01-default04.max"
                 )
-        elif site == "WH02":
-            if component == "vertical":
+        elif self.site == "WH02":
+            if self.component == "vertical":
                 max_path = "./results/fk/final/conventional-WH02_3C_split-default08.max"
-            elif component == "transverse":
+            elif self.component == "transverse":
                 max_path = (
                     "./results/fk/final/conventionaltransverse-WH02-default04.max"
                 )
-        elif site == "WH03":
-            if component == "vertical":
+        elif self.site == "WH03":
+            if self.component == "vertical":
                 max_path = "./results/fk/final/conventional-WH03-default08.max"
-            elif component == "transverse":
+            elif self.component == "transverse":
                 max_path = "./results/fk/final/conventionaltransverse-WH03-sliced-default04.max"
-        elif site == "WH04":
-            if component == "vertical":
+        elif self.site == "WH04":
+            if self.component == "vertical":
                 max_path = "./results/fk/final/conventional-WH04-longest-default08.max"
-            elif component == "transverse":
+            elif self.component == "transverse":
                 max_path = "./results/fk/final/conventionaltransverse-WH04-longest-default04.max"
 
         return max_path
 
-    def plot_figure(self, site, component, y_domain, ln_data, n_bins=100):
-        max_path = self.get_path(site, component)
-
+    def plot_figure(self):
+        max_path = self.get_path()
         df_max = read_max_file(max_path)
+
         freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = (
             compute_dispersion_curve(
                 df_max,
@@ -260,21 +259,21 @@ class CurvePicking:
             np.log10(np.min(freqs_grid)), np.log10(np.max(freqs_grid)), len(freqs) + 1
         )
 
-        if y_domain == "velocity":
+        if self.y_domain == "velocity":
             y_grid = vels_grid
-        elif y_domain == "slowness":
+        elif self.y_domain == "slowness":
             y_grid = 1 / vels_grid
 
-        if ln_data:
+        if self.ln_data:
             y_grid = np.log(y_grid)
 
-        y_bins = np.logspace(np.log10(np.min(y_grid)), np.log10(np.max(y_grid)), n_bins)
+        y_bins = np.logspace(
+            np.log10(np.min(y_grid)), np.log10(np.max(y_grid)), self.n_bins
+        )
         # y_bins = np.linspace(np.min(y_grid), np.max(y_grid), n_bins)
 
-        fig, ax = plt.subplots(figsize=(10, 5))
-
         # plot frequency and velocity 2D histogram
-        hist = plt.hist2d(
+        hist = self.ax[0].hist2d(
             freqs_grid,
             y_grid,
             bins=[
@@ -285,42 +284,122 @@ class CurvePicking:
             norm=LogNorm(),
         )
 
-        plt.xscale("log")
-        plt.yscale("log")
+        self.ax[0].set_xscale("log")
+        self.ax[0].set_yscale("log")
         # plt.ylim([100, 2200])
 
-        if y_domain == "velocity":
-            if ln_data:
+        if self.y_domain == "velocity":
+            if self.ln_data:
                 # plt.ylim([50, 2200])
-                plt.ylabel("ln(phase velocity)")
+                self.ax[0].set_ylabel("ln(phase velocity)")
             else:
-                plt.ylim([50, 2200])
-                plt.ylabel("phase velocity (m/s)")
-        elif y_domain == "slowness":
-            if ln_data:
+                self.ax[0].set_ylim([50, 2200])
+                self.ax[0].set_ylabel("phase velocity (m/s)")
+        elif self.y_domain == "slowness":
+            if self.ln_data:
                 # plt.ylim([50, 2200])
-                plt.ylabel("ln(slowness)")
+                self.ax[0].set_ylabel("ln(slowness)")
             else:
                 # plt.ylim([50, 2200])
-                plt.ylabel("slowness (s/m)")
+                self.ax[0].set_ylabel("slowness (s/m)")
 
-        plt.xlabel("frequency (Hz)")
+        self.ax[0].set_xlabel("frequency (Hz)")
 
-        plt.colorbar(label="counts")
+        # plt.colorbar(label="counts")
 
         # plot dispersion curve with errors
         # plt.plot(freqs_curve, vels_curve)
 
-        for axis in [ax.xaxis, ax.yaxis]:
+        for axis in [self.ax[0].xaxis, self.ax[0].yaxis]:
             formatter = ScalarFormatter()
             formatter.set_scientific(False)
             axis.set_major_formatter(formatter)
 
-        plt.grid(True)
+        # plt.grid(True)
 
-        plt.tight_layout()
+        # plt.tight_layout()
 
-        return ax, hist, freqs_grid, y_grid
+        return hist, freqs_grid, y_grid
+
+    def plot_residuals(self, polygon):
+        self.ax[1].clear()
+
+        max_path = self.get_path()
+        df_max = read_max_file(max_path)
+
+        freqs_grid, vels_grid, freqs, vel_means, vel_meds, stds = (
+            compute_dispersion_curve(
+                df_max,
+            )
+        )
+
+        freq_bins = np.logspace(
+            np.log10(np.min(freqs_grid)), np.log10(np.max(freqs_grid)), len(freqs) + 1
+        )
+
+        if self.y_domain == "velocity":
+            y_grid = vels_grid
+        elif self.y_domain == "slowness":
+            y_grid = 1 / vels_grid
+
+        if self.ln_data:
+            y_grid = np.log(y_grid)
+
+        # should only be using grid values within the polygon...
+        new_freqs = []
+        new_y = []
+        for ind, f in enumerate(self.plot_freqs):
+            for y in y_grid[np.isclose(freqs_grid, f)]:
+                if Point(f, y).within(polygon):
+                    new_freqs.append(f)
+                    new_y.append(y - self.plot_vels[ind])
+
+        # y_bins = np.logspace(
+        #     np.log10(np.min(y_grid)), np.log10(np.max(y_grid)), self.n_bins
+        # )
+        y_bins = np.linspace(np.min(new_y), np.max(new_y), self.n_bins)
+
+        # plot frequency and velocity 2D histogram
+        hist = self.ax[1].hist2d(
+            new_freqs,
+            new_y,
+            bins=[
+                freq_bins,
+                y_bins,
+            ],
+            cmap="coolwarm",
+            norm=LogNorm(),
+        )
+
+        # self.ax[1].xscale("log")
+        # self.ax[1].yscale("log")
+        # plt.ylim([100, 2200])
+
+        if self.y_domain == "velocity":
+            if self.ln_data:
+                # plt.ylim([50, 2200])
+                self.ax[1].set_ylabel("ln(phase velocity)")
+            else:
+                self.ax[1].set_ylabel("phase velocity (m/s)")
+        elif self.y_domain == "slowness":
+            if self.ln_data:
+                # plt.ylim([50, 2200])
+                self.ax[1].set_ylabel("ln(slowness)")
+            else:
+                # plt.ylim([50, 2200])
+                self.ax[1].set_ylabel("slowness (s/m)")
+
+        self.ax[1].set_xlabel("frequency (Hz)")
+
+        # plt.colorbar(label="counts")
+
+        # plot dispersion curve with errors
+        # plt.plot(freqs_curve, vels_curve)
+
+        for axis in [self.ax[1].xaxis, self.ax[1].yaxis]:
+            formatter = ScalarFormatter()
+            formatter.set_scientific(False)
+            axis.set_major_formatter(formatter)
 
     def update_error_bar(self, errobj, x, y, y_error):
         # ln, (errx_top, errx_bot, erry_top, erry_bot), (barsx, barsy) = errobj
@@ -355,7 +434,7 @@ class CurvePicking:
 
 
 if __name__ == "__main__":
-    site = "WH01"
+    site = "WH04"
     component = "vertical"
     # component = "transverse"
     y_domain = "velocity"
