@@ -2,33 +2,36 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-
 # ARRAY RESPONSE
 
 
-def plot_array_layout():
+def plot_array_layout(site):
     # plot array layout from relative positions
     # label instruments and indicate the odd ones
-    site = "WH04"
-
     data_path = "./data/" + site + "/" + site + "_loc_corrected_geopsy.txt"
+    # data_path = "./data/" + site + "/txt_files/" + site + "_loc_corrected_geopsy.txt"
 
     df = pd.read_csv(data_path, names=["instrument", "x", "y"], sep="\s+")
 
     for i, row in df.iterrows():
         instrument = row["instrument"].replace("SS_", "")
-        if site == "WH03" and ((instrument == "25242") or (instrument == "25057")):
-            color = "red"
-        elif site == "WH04" and ((instrument == "24625") or (instrument == "25257")):
-            color = "red"
-        else:
-            color = "black"
+        # if site == "WH03" and ((instrument == "25242") or (instrument == "25057")):
+        #    color = "red"
+        # elif site == "WH04" and ((instrument == "24625") or (instrument == "25257")):
+        #     color = "red"
+        # else:
+        color = "black"
 
         plt.scatter(row["x"], row["y"], c=color)
 
-    plt.title(site)
-    plt.xlabel("x (m)")
-    plt.ylabel("y (m)")
+    # plt.title(site)
+    plt.xlabel("x (m)", fontsize=20)
+    plt.ylabel("y (m)", fontsize=20)
+
+    plt.tick_params(axis="both", which="major", labelsize=16)
+
+    # plt.xlim([-75, 140])
+    # plt.ylim([-75, 140])
     plt.show()
 
 

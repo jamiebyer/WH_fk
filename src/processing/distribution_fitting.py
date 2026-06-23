@@ -14,9 +14,166 @@ from matplotlib.colors import LogNorm
 
 from scipy.optimize import curve_fit
 
+# import sys
+# sys.path.append("../src/")
+from utils.utils import read_max_file, get_path
 
-def asymmetric_laplacian(x, lambd, kappa, scale):
-    mu = 0
+
+def write_spread(polygon):
+    """
+    Write spread info to csv.
+
+    Save quantiles to plot and compare...
+    """
+    max_path, curve_path, polygon_path = get_path(site)
+
+    df_max = read_max_file(max_path)
+    freqs_grid = df_max["frequency"]
+    vels_grid = 1 / df_max["slowness"]
+
+    curve_df = pd.read_csv(curve_path)
+
+    with open(polygon_path) as f:
+        contents = f.read()
+    polygon = ast.literal_eval(contents)
+
+    y_curve = curve_df["vels"]
+
+    # get freqs for dispersion curve
+    # get freqs_grid with the same frequencies as the dispersion curve.
+    curve_freqs = curve_df["freqs"]
+
+    residuals_freq = []
+    residuals_grid = []
+    quant_5 = []
+    quant_95 = []
+    for f in curve_freqs:
+        vels = vels_grid[np.isclose(freqs_grid, f)].values
+        if polygon:
+            inds = [shapely.within(Point(f, v), Polygon(polygon)) for v in vels]
+            res = list(vels[inds] - y_curve[curve_freqs == f].values[0])
+        else:
+            res = list(vels - y_curve[curve_freqs == f].values[0])
+        residuals_freq += list(np.repeat(f, len(res)))
+        residuals_grid += res
+        quant_5.append(np.quantile(res, 0.05))
+        quant_95.append(np.quantile(res, 0.95))
+
+    x_data = curve_freqs  # [inds]
+
+    quant_5 = np.array(quant_5)  # [inds]
+    quant_95 = np.array(quant_95)  # [inds]
+
+    spread = quant_95 - quant_5
+
+    # smooth out using a 3-point rolling average
+    smoothed_spread = (
+        [np.mean(spread[:3])]
+        + [np.mean(spread[i : i + 2]) for i in range(len(spread) - 2)]
+        + [np.mean(spread[-3:])]
+    )
+    # add end points
+
+    # save smoothed spread and frequencies to file
+    df = pd.DataFrame({"freq": x_data, "spread": smoothed_spread})
+    df.to_csv("./results/curves/spread/" + site + ".csv")
+
+
+def get_data(site, n_bins, polygon, scale):
+    """
+    :param site:
+    :param n_bins:
+    :param polygon:
+
+    clip data to subset within polygon.
+    get histogram of residuals to fit the error distribution to.
+    calculate quantiles.
+    """
+    max_path, curve_path, polygon_path = get_path(site)
+
+    # max file / 2d hist df
+    df_max = read_max_file(max_path)
+    freqs_grid = df_max["frequency"]
+    vels_grid = 1 / df_max["slowness"]
+
+    # dispersion curve df
+    curve_df = pd.read_csv(curve_path)
+    curve_freqs = curve_df["freqs"]
+    y_curve = curve_df["vels"]
+
+    # read in polygon
+    if polygon:
+        with open(polygon_path) as f:
+            contents = f.read()
+        polygon = ast.literal_eval(contents)
+
+    data_dict = {}
+    # save points that are within the polygon
+    all_res = []
+    for ind, f in enumerate(curve_freqs):
+        vels = vels_grid[np.isclose(freqs_grid, f)].values
+        if polygon:
+            # select data which is within the polygon
+            inds = [shapely.within(Point(f, v), Polygon(polygon)) for v in vels]
+
+            res = list(vels[inds] - y_curve[curve_freqs == f].values[0])
+        else:
+            res = list(vels - y_curve[curve_freqs == f].values[0])
+
+        all_res += res
+
+        min_res = np.min(res)
+        max_res = np.max(res)
+
+        x_spacing = (max_res - min_res) / n_bins
+        xbins = list(np.flip(np.arange(-x_spacing / 2, min_res, -x_spacing))) + list(
+            np.arange(x_spacing / 2, max_res, x_spacing)
+        )
+        counts, bins, _ = plt.hist(all_res, bins=xbins, density=True)
+
+        q_5 = np.quantile(all_res, 0.05)
+        q_95 = np.quantile(all_res, 0.95)
+
+        # values from the distribution will be the counts of the histogram at the midpoint of the bins...
+        data_x = (bins[:-1] + bins[1:]) / 2
+        data_dict[f] = {
+            "xbins": xbins,
+            "x_data": data_x,
+            "counts": counts,
+            "res": res,
+            "quant_5": q_5,
+            "quant_95": q_95,
+        }
+
+        all_res += res
+
+    # the min and max of residuals from all frequencies
+    min_res = np.min(all_res)
+    max_res = np.max(all_res)
+
+    # make sure xbins are centered on 0
+    x_spacing = (max_res - min_res) / n_bins
+    xbins = list(np.flip(np.arange(-x_spacing / 2, min_res, -x_spacing))) + list(
+        np.arange(x_spacing / 2, max_res, x_spacing)
+    )
+    counts, bins, _ = plt.hist(all_res, bins=xbins, density=True)
+
+    # values from the distribution will be the counts of the histogram at the midpoint of the bins...
+    data_x = (bins[:-1] + bins[1:]) / 2
+
+    return min_res, max_res, curve_freqs, data_x, counts, all_res, data_dict
+
+
+def asymmetric_laplacian(x, lambd, kappa, scale, mu=0):
+    """
+    :param x:
+    :param lambd: lambda, scale parameter. Inversely correlated to spread
+    :param kappa: skewness parameter
+    :param scale:
+
+    Asymmetric Laplacian distribution.
+
+    """
     lambd = scale * lambd
     s = np.sign(x - mu)
     data_pred = (lambd / (kappa + 1 / kappa)) * np.exp(-(x - mu) * lambd * s * kappa**s)
@@ -24,23 +181,176 @@ def asymmetric_laplacian(x, lambd, kappa, scale):
     return data_pred
 
 
-def def_asymmetric_laplacian(scale):
-    def func(x, lambd, kappa):
+def get_distribution(dist, dist_params, data_x, scale=1):
+    """
+    :param dist: distribution type ("EMG", "normal", "log-normal", "asym-laplace")
+    :param dist_params:
+    :param data_x:
+    :param scale:
+    """
+    if dist == "EMG":
+        mu, sigma, lambd = dist_params
+        data_pred = (
+            (lambd / 2)
+            * np.exp((lambd / 2) * (2 * mu + lambd * sigma**2 - 2 * data_x))
+            * (1 - special.erf((mu + lambd * sigma**2 - data_x) / (np.sqrt(2) * sigma)))
+        )
+    elif dist == "normal":
+        mu, sigma = dist_params
+        data_pred = (1 / np.sqrt(2 * np.pi * sigma**2)) * np.exp(
+            -((data_x - mu) ** 2 / (2 * sigma**2))
+        )
+    elif dist == "log-normal":
+        mu, sigma = dist_params
+        data_pred = (1 / (data_x * sigma * np.sqrt(2 * np.pi))) * np.exp(
+            -((np.log(data_x) - mu) ** 2) / (2 * sigma**2)
+        )
+        data_pred[np.isnan(data_pred)] = 0
+    elif dist == "asym-laplace":
         mu = 0
+        lambd, kappa = dist_params
         lambd = scale * lambd
-        s = np.sign(x - mu)
+        s = np.sign(data_x - mu)
         data_pred = (lambd / (kappa + 1 / kappa)) * np.exp(
-            -(x - mu) * lambd * s * kappa**s
+            -(data_x - mu) * lambd * s * kappa**s
         )
 
-        return data_pred
-
-    return func
+    return data_pred
 
 
-def optimization_fitting_all(site, n_bins, polygon):
+def run_grid_search(dist, data_dict, scale=1):
+    """
+    Search with coarse grid, then search with fine grid.
+    """
+
+    # make coarse grid of params to search for first iteration.
+    if dist == "normal":
+        # Gaussian params
+        mu_min, mu_max = -150, 150
+        sigma_min, sigma_max = 0.001, 150
+
+        mu = np.linspace(mu_min, mu_max, 200)
+        sigma = np.linspace(sigma_min, sigma_max, 200)
+        params = list(itertools.product(mu, sigma))
+    elif dist == "log-normal":
+        # log-normal params
+        mu = np.linspace(-50, 50, 100)
+        sigma = np.logspace(-3, 3, 100)
+        params = list(itertools.product(mu, sigma))
+    elif dist == "EMG":
+        # EMG params
+        mu_min, mu_max = -150, 150
+        sigma_min, sigma_max = 0.001, 150
+        lambd_min, lambd_max = -3, 2
+
+        # mu = np.linspace(mu_min, mu_max, 100)
+        # sigma = np.linspace(sigma_min, sigma_max, 75)
+        # lambd = np.logspace(lambd_min, lambd_max, 30)
+
+        mu = np.linspace(mu_min, mu_max, 15)
+        sigma = np.linspace(sigma_min, sigma_max, 15)
+        lambd = np.logspace(lambd_min, lambd_max, 15)
+        params = list(itertools.product(mu, sigma, lambd))
+    elif dist == "asym-laplace":
+        # asymmetric laplacian params
+        # mu_min, mu_max = -150, 150
+        lambd_min, lambd_max = -3, 3
+        kappa_min, kappa_max = -3, 1
+
+        # mu = np.linspace(mu_min, mu_max, 100)
+        lambd = np.logspace(lambd_min, lambd_max, 60)
+        kappa = np.logspace(kappa_min, kappa_max, 60)
+        # params = list(itertools.product(mu, lambd, kappa))
+        params = list(itertools.product(lambd, kappa))
+
+    best_params = get_best_params(params, dist, data_dict, scale)
+
+    # define range for fine grid based on values for params
+    if dist == "normal":
+        mu_min, mu_max = best_params[0] * 0.95, best_params[0] * 1.05
+        sigma_min, sigma_max = best_params[1] * 0.95, best_params[1] * 1.05
+
+        mu_fine = np.linspace(mu_min, mu_max, 60)
+        sigma_fine = np.linspace(sigma_min, sigma_max, 60)
+        params = list(itertools.product(mu_fine, sigma_fine))
+    elif dist == "EMG":
+        mu_min, mu_max = best_params[0] * 0.95, best_params[0] * 1.05
+        sigma_min, sigma_max = best_params[1] * 0.95, best_params[1] * 1.05
+        lambd_min, lambd_max = best_params[2] * 0.95, best_params[2] * 1.05
+
+        # mu_fine = np.linspace(mu_min, mu_max, 60)
+        # sigma_fine = np.linspace(sigma_min, sigma_max, 60)
+        # lambd_fine = np.linspace(lambd_min, lambd_max, 40)
+
+        mu_fine = np.linspace(mu_min, mu_max, 15)
+        sigma_fine = np.linspace(sigma_min, sigma_max, 15)
+        lambd_fine = np.linspace(lambd_min, lambd_max, 15)
+        params = list(itertools.product(mu_fine, sigma_fine, lambd_fine))
+    elif dist == "asym-laplace":
+        # mu_min, mu_max = best_params[0] * 0.95, best_params[0] * 1.05
+        lambd_min, lambd_max = best_params[0] * 0.95, best_params[0] * 1.05
+        kappa_min, kappa_max = best_params[1] * 0.95, best_params[1] * 1.05
+
+        # mu_fine = np.linspace(mu_min, mu_max, 60)
+        lambd_fine = np.linspace(lambd_min, lambd_max, 40)
+        kappa_fine = np.linspace(kappa_min, kappa_max, 60)
+
+        params = list(itertools.product(lambd_fine, kappa_fine))
+
+    # if the chosen params are one of the bounds, need to expand the range.
+
+    best_params = get_best_params(params, dist, data_dict, scale)
+
+    return best_params
+
+
+def get_best_params(params, dist, data_dict, scale):
+    """ """
+    best_params = None
+    best_lsq = np.inf
+    for p in params:
+        lsq = 0
+        for i, (f, val) in enumerate(data_dict.items()):
+            # remove data with 0 counts
+            inds = val["counts"] != 0
+            if isinstance(scale, (list, np.ndarray)):
+                s = scale[i]
+            else:
+                s = scale
+            data_pred = get_distribution(dist, p, val["x_data"][inds], s)
+
+            # compare with data...
+            residuals = data_pred - val["counts"][inds]
+            lsq += (1 / np.sum(inds)) * (np.sum(residuals**2))
+            # logL = -np.sum((residuals**2) / (2 * sigma_data**2))
+
+        if lsq < best_lsq:
+            best_lsq = lsq
+            best_params = p
+
+    return best_params
+
+
+def optimization_fitting(site, n_bins, polygon):
+    """
+    Test doing fitting using scipy.optimize curve_fit.
+    """
+
+    def def_asymmetric_laplacian(scale):
+        def func(x, lambd, kappa):
+            mu = 0
+            lambd = scale * lambd
+            s = np.sign(x - mu)
+            data_pred = (lambd / (kappa + 1 / kappa)) * np.exp(
+                -(x - mu) * lambd * s * kappa**s
+            )
+
+            return data_pred
+
+        return func
+
     # get scaling parameters from fitting data spread
-    all_min, all_max, data_dict, scale = get_all_data(site, n_bins, polygon=polygon)
+    all_min, all_max, data_dict, scale = get_data(site, n_bins, polygon=polygon)
 
     freqs = data_dict.keys()
     q1_list, q2_list = [], []
@@ -80,7 +390,8 @@ def optimization_fitting_all(site, n_bins, polygon):
         pdf = asymmetric_laplacian(x, lambd, kappa, scale[ind])
 
         # plot_distribution(axs, x, pdf, cdf, dist_q1, dist_q2, dist_peak)
-        plot_distribution(axs, x, pdf)
+        axs[0].plot(x, pdf)
+        axs[1].plot(x, pdf)
 
         # save the quantiles for the saved distributions
         # integrate distribution
@@ -140,20 +451,69 @@ def optimization_fitting_all(site, n_bins, polygon):
     )
 
 
-def all_data_distribution_fitting(site, dist, n_bins, freq_range, polygon):
-    # get scaling parameters from fitting data spread
-    all_min, all_max, curve_freqs, data_x, counts, all_res, data_dict = get_all_data(
-        site, n_bins, freq_range, polygon=polygon
+def error_distribution_fitting_by_full_dataset(
+    site, dist, n_bins, polygon, frequency_scaling
+):
+    """
+    :param site: Site name ("WH01", "WH02", "WH03", "WH04")
+    :param dist: Distribution type ("normal", "asym-laplace")
+    :param n_bins:
+    :param freq_range:
+    :param polygon: Whether to do polygon clipping.
+    :param fit_full_dataset:
+    :param frequency_scaling: Only for fitting the full dataset.
+
+    Find error distribution parameters using data fit from residuals for full dataset
+    to get one set of parameters for the whole curve.
+    - Get scaling parameters from data spread.
+    - Perform a grid search to find best fit for error distribution parameters.
+    - Plot the data (residuals) at each frequency, and the distribution fit.
+    - Save parameters to csv.
+    """
+
+    # 1. Scale the data at each frequency by the (smoothed) spread, and fit the scaled
+    # data all together to find one set of parameters.
+    # 2. Don't scale the data, and fit the unscaled data all together to find one set
+    # of parameters.
+    # 3. Fit each frequency with an individual set of parameters.
+
+    # For running the reverse mismatch inversion, I need to be able to fit a ASL distribution
+    # to the input noise distribution.
+    # With IID Gaussian noise, I can find a distribution using #2.
+    # With frequency scaled ASL noise, I can use #1.
+    # #3 remains from previous testing... would be nice to be able to run that way optionally.
+
+    # Will want to run with noise scenarios, save params, and then run inversion loading those params.
+
+    # Still need to loop over all frequencies in either scenario to do the frequency plots...
+    # For fitting to the whole dataset, the params are found before looping, for fitting
+    # individually, the params are found while iterating.
+    # Still want the residuals at each frequency for all scenarios for plotting.
+
+    # Scaled data: plot unscaled residuals for individual frequencies, and plot scaled residuals for all data
+
+    # get scaling from data spread
+    if frequency_scaling:
+        df = pd.read_csv("./results/curves/spread/" + site + ".csv")
+        scale = 1 / df["spread"].values
+    else:
+        scale = 1
+
+    # read in data and get histograms...
+    all_min, all_max, curve_freqs, data_x, counts, all_res, data_dict = get_data(
+        site, n_bins, polygon=polygon, scale=scale
     )
 
-    best_params = perform_grid_search(dist, all_min, all_max, data_x, counts)
-    print("lambda: " + str(best_params[0]) + "kappa: " + str(best_params[1]))
+    # grid search to get best distribution parameters
+    best_params = run_grid_search(dist, data_dict, scale)
 
+    # lists for storing quantiles and params at each frequency
     q1_list, q2_list = [], []
-    x = np.linspace(all_min, all_max, 100000)
+    params_list = []
+    x = np.linspace(all_min, all_max, 100000)  # x for plotting pdf
+    # loop over each frequency in dispersion curve frequencies
     for ind, f in enumerate(curve_freqs):
-        fig, axs = plt.subplots(ncols=1, nrows=3, sharex=True)  # , figsize=(3.5, 2.5)
-        # plt.clf()
+        fig, axs = plt.subplots(ncols=1, nrows=3, sharex=True)
 
         res = data_dict[f]["res"]
 
@@ -170,176 +530,13 @@ def all_data_distribution_fitting(site, dist, n_bins, freq_range, polygon):
         # axs[0].set_xlim([min_res, max_res])
         axs[0].set_xlim([all_min, all_max])
 
-        data_pred = get_distribution(dist, best_params, data_dict[f]["x"])
-        pdf = get_distribution(dist, best_params, x)
-
-        # plot_distribution(axs, x, pdf, cdf, dist_q1, dist_q2, dist_peak)
-        plot_distribution(axs, x, pdf)
-
-        # save the quantiles for the saved distributions
-        # integrate distribution
-        dx = x[1] - x[0]
-        cdf = np.cumsum(((pdf[:-1] + pdf[1:]) / 2) * dx)
-        # get quantiles and peak
-        q1 = x[np.argmin(np.abs(cdf - 0.05))]
-        q2 = x[np.argmin(np.abs(cdf - 0.95))]
-
-        q1_list.append(q1)
-        q2_list.append(q2)
-
-        axs[1].axvline(x=q1, c="red")
-        axs[1].axvline(x=q2, c="red")
-
-        inds = data_dict[f]["counts"] != 0
-        residuals = data_pred - data_dict[f]["counts"]
-        axs[2].axhline(y=0, c="black")
-        axs[2].scatter(data_dict[f]["x"][inds], residuals[inds])
-        axs[2].set_ylim([-0.025, 0.025])
-
-        # plt.suptitle(str(dist_params))
-        plt.suptitle(
-            "freq: "
-            + str(np.round(f, 2))
-            + "\n"
-            + "lambda: "
-            + str(np.round(best_params[0], 4))
-            + ", kappa: "
-            + str(np.round(best_params[1], 4))
+        data_pred = get_distribution(
+            dist, best_params, data_dict[f]["x_data"], scale[ind]
         )
-
-        plt.savefig(
-            "./figures/curve_fitting/"
-            + site
-            + "/"
-            + dist
-            + "-all"
-            + "/"
-            + site
-            + "-"
-            + str(np.round(f, 2))
-            + "-"
-            + str(polygon)
-            + ".png"
-        )
-        plt.close()
-
-    """
-    df = pd.DataFrame({"freqs": freqs, "q1": q1_list, "q2": q2_list})
-    df.to_csv(
-        "./figures/curve_fitting/"
-        + site
-        + "/"
-        + dist
-        + "-all"
-        + "/"
-        + site
-        + "-"
-        + str(polygon)
-        + ".csv"
-    )
-    """
-    fig, axs = plt.subplots(ncols=1, nrows=3, sharex=True)  # , figsize=(3.5, 2.5)
-
-    x_spacing = (all_max - all_min) / n_bins
-    xbins = list(np.flip(np.arange(-x_spacing / 2, min_res, -x_spacing))) + list(
-        np.arange(x_spacing / 2, max_res, x_spacing)
-    )
-
-    # plot all residuals together
-    axs[0].hist(all_res, bins=xbins, density=True)
-    # axs[0].set_ylim([0, 0.02])
-    # axs[0].set_xlim([min_res, max_res])
-    axs[0].set_xlim([all_min, all_max])
-
-    data_pred = get_distribution(dist, best_params, data_dict[f]["x"])
-    pdf = get_distribution(dist, best_params, x)
-
-    # plot_distribution(axs, x, pdf, cdf, dist_q1, dist_q2, dist_peak)
-    plot_distribution(axs, x, pdf)
-
-    # save the quantiles for the saved distributions
-    # integrate distribution
-    dx = x[1] - x[0]
-    cdf = np.cumsum(((pdf[:-1] + pdf[1:]) / 2) * dx)
-    # get quantiles and peak
-    q1 = x[np.argmin(np.abs(cdf - 0.05))]
-    q2 = x[np.argmin(np.abs(cdf - 0.95))]
-
-    q1_list.append(q1)
-    q2_list.append(q2)
-
-    axs[1].axvline(x=q1, c="red")
-    axs[1].axvline(x=q2, c="red")
-
-    inds = data_dict[f]["counts"] != 0
-    residuals = data_pred - data_dict[f]["counts"]
-    axs[2].axhline(y=0, c="black")
-    axs[2].scatter(data_dict[f]["x"][inds], residuals[inds])
-    axs[2].set_ylim([-0.025, 0.025])
-
-    # plt.suptitle(str(dist_params))
-    plt.suptitle(
-        "lambda: "
-        + str(np.round(best_params[0], 4))
-        + ", kappa: "
-        + str(np.round(best_params[1], 4))
-    )
-
-    plt.savefig(
-        "./figures/curve_fitting/"
-        + site
-        + "/"
-        + dist
-        + "-all"
-        + "/"
-        + site
-        + "-"
-        + str(polygon)
-        + ".png"
-    )
-
-
-def all_data_distribution_fitting_scale(site, dist, n_bins, polygon):
-    # get scaling parameters from fitting data spread
-    all_min, all_max, data_dict, scale = get_all_data_scale(
-        site, n_bins, polygon=polygon
-    )
-
-    best_params = all_data_grid_search(dist, data_dict, scale)
-    print("lambda: " + str(best_params[0]) + "kappa: " + str(best_params[1]))
-
-    freqs = data_dict.keys()
-    q1_list, q2_list = [], []
-    x = np.linspace(all_min, all_max, 100000)
-    for ind, f in enumerate(freqs):
-        fig, axs = plt.subplots(ncols=1, nrows=3, sharex=True)  # , figsize=(3.5, 2.5)
-        # plt.clf()
-
-        res = data_dict[f]["res"]
-
-        min_res = np.min(res)
-        max_res = np.max(res)
-
-        x_spacing = (max_res - min_res) / n_bins
-        xbins = list(np.flip(np.arange(-x_spacing / 2, min_res, -x_spacing))) + list(
-            np.arange(x_spacing / 2, max_res, x_spacing)
-        )
-
-        # xbins = list(np.arange(min_res, 0, x_spacing)) + list(
-        #     np.arange(0, max_res, x_spacing)
-        # )
-        # print(xbins, "\n")
-        # xbins = np.linspace(min_res, max_res, n_bins)
-        axs[0].hist(res, bins=xbins, density=True)
-        # axs[0].set_ylim([0, 0.02])
-        # axs[0].set_xlim([min_res, max_res])
-        axs[0].set_xlim([all_min, all_max])
-
-        data_pred = get_distribution(dist, best_params, data_dict[f]["x"], scale[ind])
         pdf = get_distribution(dist, best_params, x, scale[ind])
 
-        # plot_distribution(axs, x, pdf, cdf, dist_q1, dist_q2, dist_peak)
-        plot_distribution(axs, x, pdf)
+        axs[0].plot(x, pdf)
+        axs[1].plot(x, pdf)
 
         # save the quantiles for the saved distributions
         # integrate distribution
@@ -358,507 +555,159 @@ def all_data_distribution_fitting_scale(site, dist, n_bins, polygon):
         inds = data_dict[f]["counts"] != 0
         residuals = data_pred - data_dict[f]["counts"]
         axs[2].axhline(y=0, c="black")
-        axs[2].scatter(data_dict[f]["x"][inds], residuals[inds])
+        axs[2].scatter(data_dict[f]["x_data"][inds], residuals[inds])
         axs[2].set_ylim([-0.025, 0.025])
 
-        # plt.suptitle(str(dist_params))
-        plt.suptitle(
-            "freq: "
-            + str(np.round(f, 2))
-            + "\n"
-            + "lambda: "
-            + str(np.round(best_params[0], 4))
-            + ", kappa: "
-            + str(np.round(best_params[1], 4))
-            + ", scale:"
-            + str(scale[ind])
-        )
+        params_list.append(best_params)
 
         plt.savefig(
             "./figures/curve_fitting/"
             + site
             + "/"
             + dist
-            + "-all"
             + "/"
             + site
             + "-"
             + str(np.round(f, 2))
-            + "-"
-            + str(polygon)
             + ".png"
         )
         plt.close()
 
-    df = pd.DataFrame({"freqs": freqs, "q1": q1_list, "q2": q2_list, "scale": scale})
-    df.to_csv(
-        "./figures/curve_fitting/"
-        + site
-        + "/"
-        + dist
-        + "-all"
-        + "/"
-        + site
-        + "-"
-        + str(polygon)
-        + ".csv"
-    )
+    params_list = np.array(params_list)
 
-
-def distribution_fitting(site, selected_freq, n_bins, polygon):
-
-    fig, axs = plt.subplots(ncols=1, nrows=3, sharex=True)  # , figsize=(3.5, 2.5)
-
-    min_res, max_res, data_q1, data_q2, data_peak, data_x, data_y = get_data(
-        axs, site, selected_freq, n_bins, polygon=polygon
-    )
-
-    # loop over a grid of possible params
-    # dist = "normal"
-    # dist = "EMG"
-    # dist = "log-normal"
-    dist = "asym-laplace"
-
-    best_params = perform_grid_search(dist, min_res, max_res, data_x, data_y)
-    lambd, kappa = best_params
-
-    data_pred = get_distribution(dist, best_params, data_x)
-
-    # x, pdf, cdf, dist_q1, dist_q2, dist_peak, data_pred = get_distribution(
-    #     dist, dist_params, min_res, max_res, data_x
-    # )
-
-    x = np.linspace(min_res, max_res, 100000)
-    pdf = get_distribution(dist, best_params, x)
-    plot_distribution(axs, x, pdf)
-
-    # print(len(data_pred))
-    # print(len(data_y))
-    residuals = data_pred - data_y
-    # print(len(residuals), "\n")
-
-    axs[0].scatter(data_x, data_y, s=3, c="black")
-
-    axs[1].scatter(data_x, data_pred, s=3, c="black")
-
-    axs[2].axhline(y=0, c="black")
-    axs[2].scatter(data_x, residuals)
-    # axs[2].set_ylim([-0.0025, 0.0025])
-
-    # plt.suptitle(str(dist_params))
-    plt.suptitle(
-        "freq: " + str(np.round(f, 2)) + "\n"
-        "lambda: "
-        + str(np.round(lambd, 4))
-        + ", "
-        + "kappa: "
-        + str(np.round(kappa, 4))
-    )
-
-    plt.savefig(
-        "./figures/curve_fitting/"
-        + site
-        + "/asym-laplace/"
-        + site
-        + "-"
-        + str(np.round(selected_freq, 2))
-        + "-"
-        + str(polygon)
-        + ".png"
-    )
-
-    return lambd, kappa
-
-
-def perform_grid_search(dist, min_res, max_res, data_x, data_y):
-    """
-    Search with coarse grid, then search with fine grid.
-    """
-
-    # make coarse grid of params to search for first iteration.
+    df_dict = {"freqs": curve_freqs, "q1": q1_list, "q2": q2_list}
     if dist == "normal":
-        # Gaussian params
-        mu_min, mu_max = -150, 150
-        sigma_min, sigma_max = 0.001, 150
-
-        mu = np.linspace(mu_min, mu_max, 200)
-        sigma = np.linspace(sigma_min, sigma_max, 200)
-        params = list(itertools.product(mu, sigma))
-    elif dist == "log-normal":
-        # log-normal params
-        mu = np.linspace(-50, 50, 100)
-        sigma = np.logspace(-3, 3, 100)
-        params = list(itertools.product(mu, sigma))
-    elif dist == "EMG":
-        # EMG params
-        mu_min, mu_max = -150, 150
-        sigma_min, sigma_max = 0.001, 150
-        lambd_min, lambd_max = -3, 2
-
-        mu = np.linspace(mu_min, mu_max, 100)
-        sigma = np.linspace(sigma_min, sigma_max, 75)
-        lambd = np.logspace(lambd_min, lambd_max, 30)
-        params = list(itertools.product(mu, sigma, lambd))
+        pass
     elif dist == "asym-laplace":
-        mu = 0
-        # asymmetric laplacian params
-        # mu_min, mu_max = -150, 150
-        lambd_min, lambd_max = -3, 3
-        kappa_min, kappa_max = -3, 1
+        df_dict["scaled_lambd"] = scale * params_list[:, 0]
+        df_dict["lambd"] = params_list[:, 0]
+        df_dict["kappa"] = params_list[:, 1]
 
-        # mu = np.linspace(mu_min, mu_max, 100)
-        lambd = np.logspace(lambd_min, lambd_max, 60)
-        kappa = np.logspace(kappa_min, kappa_max, 60)
-        params = list(itertools.product(lambd, kappa))
-
-    best_params = get_best_params(params, dist, min_res, max_res, data_x, data_y)
-
-    # define range for fine grid based on values for params
-    if dist == "normal":
-        mu_min, mu_max = best_params[0] * 0.95, best_params[0] * 1.05
-        sigma_min, sigma_max = best_params[1] * 0.95, best_params[1] * 1.05
-
-        mu_fine = np.linspace(mu_min, mu_max, 60)
-        sigma_fine = np.linspace(sigma_min, sigma_max, 60)
-        params = list(itertools.product(mu_fine, sigma_fine))
-    elif dist == "EMG":
-        mu_min, mu_max = best_params[0] * 0.95, best_params[0] * 1.05
-        sigma_min, sigma_max = best_params[1] * 0.95, best_params[1] * 1.05
-        lambd_min, lambd_max = best_params[2] * 0.95, best_params[2] * 1.05
-
-        mu_fine = np.linspace(mu_min, mu_max, 60)
-        sigma_fine = np.linspace(sigma_min, sigma_max, 60)
-        # lambd = np.logspace(-3, 2, 30)
-        lambd_fine = np.linspace(lambd_min, lambd_max, 40)
-        params = list(itertools.product(mu_fine, sigma_fine, lambd_fine))
-    elif dist == "asym-laplace":
-        # mu_min, mu_max = best_params[0] * 0.95, best_params[0] * 1.05
-        lambd_min, lambd_max = best_params[0] * 0.95, best_params[0] * 1.05
-        kappa_min, kappa_max = best_params[1] * 0.95, best_params[1] * 1.05
-
-        # mu_fine = np.linspace(mu_min, mu_max, 60)
-        lambd_fine = np.linspace(lambd_min, lambd_max, 40)
-        kappa_fine = np.linspace(kappa_min, kappa_max, 60)
-
-        params = list(itertools.product(lambd_fine, kappa_fine))
-
-    # if the chosen params are one of the bounds, need to expand the range.
-
-    best_params = get_best_params(params, dist, min_res, max_res, data_x, data_y)
-
-    return best_params
+    df = pd.DataFrame(df_dict)
+    df.to_csv("./results/curve_fitting/" + site + "-" + dist + "-params.csv")
 
 
-def all_data_grid_search(dist, data_dict, scale):
-    """
-    Search with coarse grid, then search with fine grid.
-    """
+def get_noise_pdf(noise_dist, noise_params, freq_ind=None, mu=0):
+    x = np.linspace(-50, 50, 100000)
 
-    # make coarse grid of params to search for first iteration.
-    if dist == "normal":
-        # Gaussian params
-        mu_min, mu_max = -150, 150
-        sigma_min, sigma_max = 0.001, 150
+    if noise_dist == "normal":
+        std_data = noise_params["std"]
 
-        mu = np.linspace(mu_min, mu_max, 200)
-        sigma = np.linspace(sigma_min, sigma_max, 200)
-        params = list(itertools.product(mu, sigma))
-    elif dist == "log-normal":
-        # log-normal params
-        mu = np.linspace(-50, 50, 100)
-        sigma = np.logspace(-3, 3, 100)
-        params = list(itertools.product(mu, sigma))
-    elif dist == "EMG":
-        # EMG params
-        mu_min, mu_max = -150, 150
-        sigma_min, sigma_max = 0.001, 150
-        lambd_min, lambd_max = -3, 2
+        if isinstance(std_data, float):
+            std = std_data
+        else:
+            std = std_data[freq_ind]
 
-        # mu = np.linspace(mu_min, mu_max, 100)
-        # sigma = np.linspace(sigma_min, sigma_max, 75)
-        # lambd = np.logspace(lambd_min, lambd_max, 30)
-
-        mu = np.linspace(mu_min, mu_max, 15)
-        sigma = np.linspace(sigma_min, sigma_max, 15)
-        lambd = np.logspace(lambd_min, lambd_max, 15)
-        params = list(itertools.product(mu, sigma, lambd))
-    elif dist == "asym-laplace":
-        # asymmetric laplacian params
-        # mu_min, mu_max = -150, 150
-        lambd_min, lambd_max = -3, 3
-        kappa_min, kappa_max = -3, 1
-
-        # mu = np.linspace(mu_min, mu_max, 100)
-        lambd = np.logspace(lambd_min, lambd_max, 60)
-        kappa = np.logspace(kappa_min, kappa_max, 60)
-        # params = list(itertools.product(mu, lambd, kappa))
-        params = list(itertools.product(lambd, kappa))
-
-    best_params = all_get_best_params(params, dist, data_dict, scale)
-
-    # define range for fine grid based on values for params
-    if dist == "normal":
-        mu_min, mu_max = best_params[0] * 0.95, best_params[0] * 1.05
-        sigma_min, sigma_max = best_params[1] * 0.95, best_params[1] * 1.05
-
-        mu_fine = np.linspace(mu_min, mu_max, 60)
-        sigma_fine = np.linspace(sigma_min, sigma_max, 60)
-        params = list(itertools.product(mu_fine, sigma_fine))
-    elif dist == "EMG":
-        mu_min, mu_max = best_params[0] * 0.95, best_params[0] * 1.05
-        sigma_min, sigma_max = best_params[1] * 0.95, best_params[1] * 1.05
-        lambd_min, lambd_max = best_params[2] * 0.95, best_params[2] * 1.05
-
-        # mu_fine = np.linspace(mu_min, mu_max, 60)
-        # sigma_fine = np.linspace(sigma_min, sigma_max, 60)
-        # lambd_fine = np.linspace(lambd_min, lambd_max, 40)
-
-        mu_fine = np.linspace(mu_min, mu_max, 15)
-        sigma_fine = np.linspace(sigma_min, sigma_max, 15)
-        lambd_fine = np.linspace(lambd_min, lambd_max, 15)
-        params = list(itertools.product(mu_fine, sigma_fine, lambd_fine))
-    elif dist == "asym-laplace":
-        # mu_min, mu_max = best_params[0] * 0.95, best_params[0] * 1.05
-        lambd_min, lambd_max = best_params[0] * 0.95, best_params[0] * 1.05
-        kappa_min, kappa_max = best_params[1] * 0.95, best_params[1] * 1.05
-
-        # mu_fine = np.linspace(mu_min, mu_max, 60)
-        lambd_fine = np.linspace(lambd_min, lambd_max, 40)
-        kappa_fine = np.linspace(kappa_min, kappa_max, 60)
-
-        params = list(itertools.product(lambd_fine, kappa_fine))
-
-    # if the chosen params are one of the bounds, need to expand the range.
-
-    best_params = all_get_best_params(params, dist, data_dict, scale)
-
-    return best_params
-
-
-def get_best_params(params, dist, min_res, max_res, data_x, data_y):
-    best_params = None
-    best_lsq = np.inf
-    for p in params:
-        inds = data_y != 0
-        data_pred = get_distribution(dist, p, data_x)
-        # discretize distribution on same frequencies as data
-
-        # compare with data...
-        residuals = data_pred[inds] - data_y[inds]
-        lsq = np.sum(residuals**2)
-        # logL = -np.sum((residuals**2) / (2 * sigma_data**2))
-        if lsq < best_lsq:
-            best_lsq = lsq
-            best_params = p
-
-    return best_params
-
-
-def all_get_best_params(params, dist, data_dict, scale):
-    best_params = None
-    best_lsq = np.inf
-    for p in params:
-        lsq = 0
-        for i, (f, val) in enumerate(data_dict.items()):
-            inds = val["counts"] != 0
-            data_pred = get_distribution(dist, p, val["x"][inds], scale[i])
-            # remove data with 0 counts
-
-            # compare with data...
-            residuals = data_pred - val["counts"][inds]
-            lsq += (1 / np.sum(inds)) * (np.sum(residuals**2))
-            # logL = -np.sum((residuals**2) / (2 * sigma_data**2))
-
-        if lsq < best_lsq:
-            best_lsq = lsq
-            best_params = p
-
-    return best_params
-
-
-def get_distribution(dist, dist_params, data_x, scale=1):
-    if dist == "EMG":
-        mu, sigma, lambd = dist_params
-        # pdf = (
-        #     (lambd / 2)
-        #     * np.exp((lambd / 2) * (2 * mu + lambd * sigma**2 - 2 * x))
-        #     * (1 - special.erf((mu + lambd * sigma**2 - x) / (np.sqrt(2) * sigma)))
-        # )
-        data_pred = (
-            (lambd / 2)
-            * np.exp((lambd / 2) * (2 * mu + lambd * sigma**2 - 2 * data_x))
-            * (1 - special.erf((mu + lambd * sigma**2 - data_x) / (np.sqrt(2) * sigma)))
+        pdf = (1 / np.sqrt(2 * np.pi * std**2)) * np.exp(
+            -((x - mu) ** 2 / (2 * std**2))
         )
-    elif dist == "normal":
-        mu, sigma = dist_params
-        # pdf = (1 / np.sqrt(2 * np.pi * sigma**2)) * np.exp(
-        #     -((x - mu) ** 2 / (2 * sigma**2))
-        # )
-        data_pred = (1 / np.sqrt(2 * np.pi * sigma**2)) * np.exp(
-            -((data_x - mu) ** 2 / (2 * sigma**2))
-        )
-    elif dist == "log-normal":
-        mu, sigma = dist_params
-        # pdf = (1 / (x * sigma * np.sqrt(2 * np.pi))) * np.exp(
-        #     -((np.log(x) - mu) ** 2) / (2 * sigma**2)
-        # )
-        data_pred = (1 / (data_x * sigma * np.sqrt(2 * np.pi))) * np.exp(
-            -((np.log(data_x) - mu) ** 2) / (2 * sigma**2)
-        )
-        data_pred[np.isnan(data_pred)] = 0
-    elif dist == "asym-laplace":
-        mu = 0
-        lambd, kappa = dist_params
-        # s = np.sign(x - mu)
-        # pdf = (lambd / (kappa + 1 / kappa)) * np.exp(-(x - mu) * lambd * s * kappa**s)
-        lambd = scale * lambd
-        s = np.sign(data_x - mu)
-        data_pred = (lambd / (kappa + 1 / kappa)) * np.exp(
-            -(data_x - mu) * lambd * s * kappa**s
-        )
-    """
+
+    if noise_dist == "asym-laplace":
+        lambd, kappa = noise_params["lambd"], noise_params["kappa"]
+        lambd_scaling = noise_params["lambd_scale"]
+
+        lambd = (1 / lambd_scaling) * lambd
+
+        if isinstance(lambd, float):
+            l = lambd
+        else:
+            l = lambd[freq_ind]
+
+        s = np.sign(x - mu)
+        pdf = (l / (kappa + 1 / kappa)) * np.exp(-(x - mu) * l * s * kappa**s)
+
     # integrate distribution
+    # the cdf should go from 0 to 1
     dx = x[1] - x[0]
     cdf = np.cumsum(((pdf[:-1] + pdf[1:]) / 2) * dx)
-    # get quantiles and peak
-    q1 = x[np.argmin(np.abs(cdf - 0.05))]
-    q2 = x[np.argmin(np.abs(cdf - 0.95))]
 
-    peaks, _ = find_peaks(pdf)
-    peak = None
-    if len(peaks) == 1:
-        peak = x[peaks[0]]
-    """
-    # return x, pdf, cdf, q1, q2, peak, data_pred
-    return data_pred
+    # q_low, q_high = 0.159, 0.841
+    q_5 = x[np.argmin(np.abs(cdf - 0.05))]
+    q_95 = x[np.argmin(np.abs(cdf - 0.95))]
+
+    return x, pdf, cdf, q_5, q_95
 
 
-def plot_distribution(axs, x, pdf):
-    axs[0].plot(x, pdf)
+def generate_noise_dist(freqs, noise_dist, noise_params):
+    # can give the noise frequency-dependent scaling using either
+    # a percent of the true data
+    # or an exponential based on values from fitting the spread/percentiles of the field data
 
-    axs[1].plot(x, pdf)
-    # axs[1].axvline(x=q1, c="black", alpha=0.5)
-    # axs[1].axvline(x=q2, c="black", alpha=0.5)
-    # if peak is not None:
-    #     axs[1].axvline(x=peak, c="red", alpha=0.5)
+    # lower: 15.9, higher: 84.1, to have 68.2 range
+    AL_q_lower_list, AL_q_higher_list = [], []
+    norm_q_lower_list, norm_q_higher_list = [], []
 
-    """
-    axs[2].plot((x[:-1] + x[1:]) / 2, cdf)
-    # plot peak and quantiles
-    axs[2].axvline(x=q1, c="black", alpha=0.5)
-    axs[2].axvline(x=q2, c="black", alpha=0.5)
-    axs[2].axvline(x=peak, c="red", alpha=0.5)
-    # axs[2].set_xlim([min_res, max_res])
-    """
+    freqs_2d, noise_2d = [], []
+    stds = []
+    for ind in range(len(freqs)):
+        x, pdf, cdf, q_5, q_95 = get_noise_pdf(noise_dist, noise_params, freq_ind=ind)
+        AL_q_lower_list.append(q_5)
+        AL_q_higher_list.append(q_95)
 
+        picks = []
+        for _ in range(10000):
+            # generate a random uniform number between 0 and 1
+            n = np.random.uniform(0, 1)
 
-def get_data(axs, site, selected_freq, n_bins, polygon=False):
-    # read data in, get distribution for specific frequency
-    # (with or without polygon)
-    # calculate residuals...
-    # calculate quantiles and get peak
+            # use to select value from inverse of cdf
+            i = np.argmin(np.abs(cdf - n))
+            x_pick = (x[i] + x[i + 1]) / 2
 
-    max_path, curve_path, polygon_path = get_path(site)
+            picks.append(x_pick)
 
-    # max file / 2d hist df
-    df_max = read_max_file(max_path)
-    freqs_grid = df_max["frequency"]
-    vels_grid = 1 / df_max["slowness"]
-    # freqs_curve = np.unique(freqs_grid)
+        std = np.std(picks)
+        stds.append(std)
 
-    # dispersion curve df
-    curve_df = pd.read_csv(curve_path)
-    curve_freqs = curve_df["freqs"]
-    y_curve = curve_df["vels"]
+        x, pdf, cdf, q_5, q_95 = get_noise_pdf(
+            noise_dist="normal", noise_params={"std": std}, freq_ind=ind
+        )
+        norm_q_lower_list.append(q_5)
+        norm_q_higher_list.append(q_95)
 
-    # polygon info
-    if polygon:
-        with open(polygon_path) as f:
-            contents = f.read()
-        polygon = ast.literal_eval(contents)
+        freqs_2d += len(picks) * [freqs[ind]]
+        noise_2d += picks
 
-        # select data which is within the polygon
-        vels = vels_grid[np.isclose(freqs_grid, selected_freq)].values
-        inds = [shapely.within(Point(selected_freq, v), Polygon(polygon)) for v in vels]
+    stds = np.array(stds)
 
-    # RESIDUALS
-
-    res = list(
-        # vels_grid[np.isclose(freqs_grid, selected_freq)].values
-        vels[inds]
-        - y_curve[curve_freqs == selected_freq].values[0]
+    return (
+        freqs_2d,
+        noise_2d,
+        AL_q_lower_list,
+        AL_q_higher_list,
+        norm_q_lower_list,
+        norm_q_higher_list,
+        stds,
     )
-    min_res = np.min(res)
-    max_res = np.max(res)
-
-    xbins = np.linspace(min_res, max_res, n_bins)
-    counts, bins, _ = axs[0].hist(res, bins=xbins, density=True)
-    q1 = np.quantile(res, 0.05)
-    q2 = np.quantile(res, 0.95)
-    ind = np.argmax(counts)
-    peak = (bins[ind] + bins[ind + 1]) / 2
-
-    axs[0].axvline(x=q1, c="black")
-    axs[0].axvline(x=q2, c="black")
-    if peak is not None:
-        axs[0].axvline(x=peak, c="red")
-    axs[0].set_xlim([min_res, max_res])
-
-    # values from the distribution will be the counts of the histogram at the midpoint of the bins...
-    data_x = (bins[:-1] + bins[1:]) / 2
-
-    return min_res, max_res, q1, q2, peak, data_x, counts
 
 
-def get_all_data(site, n_bins, freq_range, polygon=False):
-    # read data in, get distribution for specific frequency
-    # (with or without polygon)
-    # calculate residuals...
-    # calculate quantiles and get peak
+def get_simulated_data(n_bins):
+    """ """
+    # generate simulated data
+    noise_dist = "normal"
+    noise_params = {"frequency_scaling": False, "std": 0.075}
+    n_data = 100
+    freqs = 1 / np.logspace(0, 1.1, n_data)
+    (
+        freqs_grid,
+        vels_grid,
+        AL_q_lower,
+        AL_q_higher,
+        norm_q_lower,
+        norm_q_higher,
+        stds,
+    ) = generate_noise_dist(freqs, noise_dist, noise_params)
 
-    max_path, curve_path, polygon_path = get_path(site)
-
-    # max file / 2d hist df
-    df_max = read_max_file(max_path)
-    freqs_grid = df_max["frequency"]
-    vels_grid = 1 / df_max["slowness"]
-    # freqs_curve = np.unique(freqs_grid)
-
-    # dispersion curve df
-    curve_df = pd.read_csv(curve_path)
-    curve_freqs = curve_df["freqs"]
-    y_curve = curve_df["vels"]
-
-    inds = (curve_freqs >= freq_range[0]) & (curve_freqs <= freq_range[1])
-    curve_freqs = curve_freqs[inds]
-    y_curve = y_curve[inds]
-
-    # polygon info
-    if polygon:
-        with open(polygon_path) as f:
-            contents = f.read()
-        polygon = ast.literal_eval(contents)
+    freqs_grid = np.array(freqs_grid)
+    vels_grid = np.array(vels_grid)
+    curve_freqs = np.unique(freqs_grid)
 
     data_dict = {}
     # save points that are within the polygon
     all_res = []
-    for f in curve_freqs:
-        vels = vels_grid[np.isclose(freqs_grid, f)].values
-        if polygon:
-            # select data which is within the polygon
-            inds = [shapely.within(Point(f, v), Polygon(polygon)) for v in vels]
+    for ind, f in enumerate(curve_freqs):
+        res = vels_grid[np.isclose(freqs_grid, f)]
 
-            res = list(
-                # vels_grid[np.isclose(freqs_grid, selected_freq)].values
-                vels[inds]
-                - y_curve[curve_freqs == f].values[0]
-            )
-        else:
-            res = list(
-                # vels_grid[np.isclose(freqs_grid, selected_freq)].values
-                vels
-                - y_curve[curve_freqs == f].values[0]
-            )
+        all_res += list(res)
 
         min_res = np.min(res)
         max_res = np.max(res)
@@ -867,17 +716,16 @@ def get_all_data(site, n_bins, freq_range, polygon=False):
         xbins = list(np.flip(np.arange(-x_spacing / 2, min_res, -x_spacing))) + list(
             np.arange(x_spacing / 2, max_res, x_spacing)
         )
-        # print(xbins, "\n")
-        # xbins = np.linspace(min_res, max_res, n_bins)
-        counts, bins, _ = plt.hist(res, bins=xbins, density=True)
+        counts, bins, _ = plt.hist(all_res, bins=xbins, density=True)
 
-        q_5 = np.quantile(res, 0.05)
-        q_95 = np.quantile(res, 0.95)
+        q_5 = np.quantile(all_res, 0.05)
+        q_95 = np.quantile(all_res, 0.95)
 
         # values from the distribution will be the counts of the histogram at the midpoint of the bins...
         data_x = (bins[:-1] + bins[1:]) / 2
         data_dict[f] = {
-            "x": data_x,
+            "xbins": xbins,
+            "x_data": data_x,
             "counts": counts,
             "res": res,
             "quant_5": q_5,
@@ -886,28 +734,16 @@ def get_all_data(site, n_bins, freq_range, polygon=False):
 
         all_res += res
 
+    # the min and max of residuals from all frequencies
     min_res = np.min(all_res)
     max_res = np.max(all_res)
 
     # make sure xbins are centered on 0
-    if min_res > 0 or max_res < 0:
-        raise ValueError
-
     x_spacing = (max_res - min_res) / n_bins
-    # xbins = list(np.arange(min_res, 0, x_spacing)) + list(
-    #     np.arange(0, max_res, x_spacing)
-    # )
     xbins = list(np.flip(np.arange(-x_spacing / 2, min_res, -x_spacing))) + list(
         np.arange(x_spacing / 2, max_res, x_spacing)
     )
-    # print(xbins, "\n")
-    # xbins = np.linspace(min_res, max_res, n_bins)
     counts, bins, _ = plt.hist(all_res, bins=xbins, density=True)
-
-    # q_5 = np.quantile(all_res, 0.05)
-    # q_95 = np.quantile(all_res, 0.95)
-    # ind = np.argmax(counts)
-    # peak = (bins[ind] + bins[ind + 1]) / 2
 
     # values from the distribution will be the counts of the histogram at the midpoint of the bins...
     data_x = (bins[:-1] + bins[1:]) / 2
@@ -915,408 +751,100 @@ def get_all_data(site, n_bins, freq_range, polygon=False):
     return min_res, max_res, curve_freqs, data_x, counts, all_res, data_dict
 
 
-def get_all_data_scale(site, n_bins, polygon=False):
-    # read data in, get distribution for specific frequency
-    # (with or without polygon)
-    # calculate residuals...
-    # calculate quantiles and get peak
+def fit_simulated_dataset(n_bins=60):
+    dist = "asym-laplace"
 
-    max_path, curve_path, polygon_path = get_path(site)
+    # read in data and get histograms...
+    all_min, all_max, curve_freqs, data_x, counts, all_res, data_dict = (
+        get_simulated_data(n_bins)
+    )
 
-    # max file / 2d hist df
-    df_max = read_max_file(max_path)
-    freqs_grid = df_max["frequency"]
-    vels_grid = 1 / df_max["slowness"]
-    # freqs_curve = np.unique(freqs_grid)
+    # grid search to get best distribution parameters
+    best_params = run_grid_search(dist, data_dict)
 
-    # dispersion curve df
-    curve_df = pd.read_csv(curve_path)
-    curve_freqs = curve_df["freqs"]
-    y_curve = curve_df["vels"]
+    # lists for storing quantiles and params at each frequency
+    q1_list, q2_list = [], []
+    params_list = []
+    x = np.linspace(all_min, all_max, 100000)  # x for plotting pdf
+    # loop over each frequency in dispersion curve frequencies
+    for ind, f in enumerate(curve_freqs):
+        fig, axs = plt.subplots(ncols=1, nrows=3, sharex=True)
 
-    # polygon info
-    if polygon:
-        with open(polygon_path) as f:
-            contents = f.read()
-        polygon = ast.literal_eval(contents)
-
-    data_dict = {}
-    all_min, all_max = 0, 0
-    spread = []
-    for f in curve_freqs:
-        vels = vels_grid[np.isclose(freqs_grid, f)].values
-        if polygon:
-            # select data which is within the polygon
-            inds = [shapely.within(Point(f, v), Polygon(polygon)) for v in vels]
-
-            res = list(
-                # vels_grid[np.isclose(freqs_grid, selected_freq)].values
-                vels[inds]
-                - y_curve[curve_freqs == f].values[0]
-            )
-        else:
-            res = list(
-                # vels_grid[np.isclose(freqs_grid, selected_freq)].values
-                vels
-                - y_curve[curve_freqs == f].values[0]
-            )
+        res = data_dict[f]["res"]
 
         min_res = np.min(res)
         max_res = np.max(res)
 
-        # make sure xbins are centered on 0
-        if min_res > 0 or max_res < 0:
-            raise ValueError
-        if min_res < all_min:
-            all_min = min_res
-        if max_res > all_max:
-            all_max = max_res
-
         x_spacing = (max_res - min_res) / n_bins
-        # xbins = list(np.arange(min_res, 0, x_spacing)) + list(
-        #     np.arange(0, max_res, x_spacing)
-        # )
         xbins = list(np.flip(np.arange(-x_spacing / 2, min_res, -x_spacing))) + list(
             np.arange(x_spacing / 2, max_res, x_spacing)
         )
-        # print(xbins, "\n")
-        # xbins = np.linspace(min_res, max_res, n_bins)
-        counts, bins, _ = plt.hist(res, bins=xbins, density=True)
 
-        q_5 = np.quantile(res, 0.05)
-        q_95 = np.quantile(res, 0.95)
-        # ind = np.argmax(counts)
-        # peak = (bins[ind] + bins[ind + 1]) / 2
+        axs[0].hist(res, bins=xbins, density=True)
+        # axs[0].set_ylim([0, 0.02])
+        # axs[0].set_xlim([min_res, max_res])
+        axs[0].set_xlim([all_min, all_max])
 
-        spread.append(q_95 - q_5)
+        data_pred = get_distribution(dist, best_params, data_dict[f]["x_data"])
+        pdf = get_distribution(dist, best_params, x)
 
-        # values from the distribution will be the counts of the histogram at the midpoint of the bins...
-        data_x = (bins[:-1] + bins[1:]) / 2
-        data_dict[f] = {
-            "x": data_x,
-            "counts": counts,
-            "res": res,
-            "quant_5": q_5,
-            "quant_95": q_95,
-        }
+        axs[0].plot(x, pdf)
+        axs[1].plot(x, pdf)
 
-    scale = 1 / np.array(spread)
-    # fit exponential to spread of the data
-    # param, param_cov = curve_fit(test_exp, curve_freqs, spread)
-    # scale = param[0] * np.exp(param[1] * curve_freqs)
-    # normalize scale
-    # scale = (scale - scale.min()) / (scale.max() - scale.min())
-    # scale = 1 - scale
+        # save the quantiles for the saved distributions
+        # integrate distribution
+        dx = x[1] - x[0]
+        cdf = np.cumsum(((pdf[:-1] + pdf[1:]) / 2) * dx)
+        # get quantiles and peak
+        q1 = x[np.argmin(np.abs(cdf - 0.05))]
+        q2 = x[np.argmin(np.abs(cdf - 0.95))]
 
-    return all_min, all_max, data_dict, scale
+        q1_list.append(q1)
+        q2_list.append(q2)
 
+        axs[1].axvline(x=q1, c="red")
+        axs[1].axvline(x=q2, c="red")
 
-def get_path(site, transverse_comp=False):
-    max_path, curve_path = "", ""
+        inds = data_dict[f]["counts"] != 0
+        residuals = data_pred - data_dict[f]["counts"]
+        axs[2].axhline(y=0, c="black")
+        axs[2].scatter(data_dict[f]["x_data"][inds], residuals[inds])
+        axs[2].set_ylim([-0.025, 0.025])
 
-    if site == "WH01":
-        if transverse_comp:
-            max_path = "./results/fk/final/conventionaltransverse-WH01-default04.max"
-            curve_path = "./results/curves/og/curve-WH01-2C.csv"
-        else:
-            max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
-            curve_path = "./results/curves/curve-WH01-vertical-velocity-False.csv"
-    elif site == "WH02":
-        if transverse_comp:
-            max_path = "./results/fk/final/conventionaltransverse-WH02-default04.max"
-            curve_path = "./results/curves/og/curve-WH02-2C.csv"
-        else:
-            max_path = "./results/fk/final/conventional-WH02_3C_split-default08.max"
-            curve_path = "./results/curves/curve-WH02-vertical-velocity-False.csv"
-    elif site == "WH03":
-        if transverse_comp:
-            max_path = (
-                "./results/fk/final/conventionaltransverse-WH03-sliced-default04.max"
-            )
-            curve_path = "./results/curves/og/curve-WH03-2C.csv"
-        else:
-            max_path = "./results/fk/final/conventional-WH03-default08.max"
-            curve_path = "./results/curves/og/curve-WH03-1C.csv"
-    elif site == "WH04":
-        if transverse_comp:
-            max_path = (
-                "./results/fk/final/conventionaltransverse-WH04-longest-default04.max"
-            )
-            curve_path = "./results/curves/og/curve-WH04-2C.csv"
-        else:
-            max_path = "./results/fk/final/conventional-WH04-longest-default08.max"
-            curve_path = "./results/curves/curve-WH04-vertical-velocity-False.csv"
+        params_list.append(best_params)
 
-    polygon_path = curve_path.replace(".csv", ".txt")
+        plt.savefig(
+            "./figures/curve_fitting/"
+            + "sim-data"
+            + "/"
+            + dist
+            + "/"
+            + "sim-data"
+            + "-"
+            + str(np.round(f, 2))
+            + ".png"
+        )
+        plt.close()
 
-    return max_path, curve_path, polygon_path
+    params_list = np.array(params_list)
 
+    df_dict = {"freqs": curve_freqs, "q1": q1_list, "q2": q2_list}
+    if dist == "normal":
+        pass
+    elif dist == "asym-laplace":
+        df_dict["lambd"] = params_list[:, 0]
+        df_dict["kappa"] = params_list[:, 1]
 
-def read_max_file(max_file):
-    """
-    Plot geopsy ".max" file.
-    Gives time, frequency, slowness, azimuth, power, --
-    """
-    # read max file
-    # determine how many lines to skip when reading pd dataframe
-    with open(max_file, "r") as file:
-        # Read the first line
-        line = file.readline()
-        ind = 0
-        while line:
-            if "# BEGIN DATA" in line:
-                ind += 3
-                break
-            line = file.readline()  # Read the next line
-            ind += 1
-
-    # column names (slightly different for old max files)
-    names = [
-        "abs_time",
-        "frequency",
-        # "polarization",
-        "slowness",
-        "azimuth",
-        "",
-        "el",
-        "no",
-        "power",
-        "valid",
-    ]
-
-    # read ".max" file as dataframe
-    # df = pd.read_csv(max_file, skiprows=ind, sep="\s+", names=names)
-    df = pd.read_csv(max_file, skiprows=ind, sep="\\s", names=names)
-    return df
-
-
-def plot_residuals(site, plot_polygon):
-    """
-    plot the histogram of f-k beamforming results with the selected dispersion curve subtracted.
-    read in the polygon that was selected with the polygon picker.
-    plot the 5th and 95th quantiles of the data. Plot the same quantiles for the error distribution fit.
-    """
-    # with and without polygon slicing
-
-    max_path, curve_path, polygon_path = get_path(site)
-
-    df_max = read_max_file(max_path)
-    # freqs_grid = np.unique(df_max["frequency"])
-    freqs_grid = df_max["frequency"]
-    vels_grid = 1 / df_max["slowness"]
-
-    curve_df = pd.read_csv(curve_path)
-
-    # if callback_context is None:
-    with open(polygon_path) as f:
-        contents = f.read()
-    # polygon = contents.replace("[", "").replace("]", "").split("), (")
-    polygon = ast.literal_eval(contents)
-
-    n_bins = 200
-
-    # Build the matplotlib figure
-    # fig = plt.figure(figsize=(14, 5))
-    fig, ax = plt.subplots(ncols=1, nrows=2, figsize=(14, 5), sharex=True)
-
-    freq_bins = np.logspace(
-        np.log10(np.min(freqs_grid)), np.log10(np.max(freqs_grid)), len(freqs) + 1
-    )
-    # y_bins = np.linspace(np.min(y_grid), np.max(y_grid), n_bins)
-
-    y_curve = curve_df["vels"]
-
-    # get freqs for dispersion curve
-    # get freqs_grid with the same frequencies as the dispersion curve.
-    curve_freqs = curve_df["freqs"]
-
-    residuals_freq = []
-    residuals_grid = []
-    quant_5 = []
-    quant_95 = []
-    for f in curve_freqs:
-        vels = vels_grid[np.isclose(freqs_grid, f)].values
-        if plot_polygon:
-            inds = [shapely.within(Point(f, v), Polygon(polygon)) for v in vels]
-            res = list(vels[inds] - y_curve[curve_freqs == f].values[0])
-        else:
-            res = list(vels - y_curve[curve_freqs == f].values[0])
-        residuals_freq += list(np.repeat(f, len(res)))
-        residuals_grid += res
-        quant_5.append(np.quantile(res, 0.05))
-        quant_95.append(np.quantile(res, 0.95))
-
-    res_bins = np.linspace(np.min(residuals_grid), np.max(residuals_grid), n_bins)
-    ax[0].hist2d(
-        residuals_freq,
-        residuals_grid,
-        bins=[
-            freq_bins,
-            res_bins,
-        ],
-        norm=LogNorm(),
-    )
-
-    df = pd.read_csv("./figures/curve_fitting/WH01/asym-laplace-all/WH01-True.csv")
-
-    # ax[0].scatter(curve_freqs, quant_5, c="red")
-    # ax[0].scatter(curve_freqs, quant_95, c="red")
-
-    # smooth out data quantiles with rolling average
-    smoothed_quant_5 = (
-        [np.mean(quant_5[:3])]
-        + [np.mean(quant_5[i : i + 2]) for i in range(len(quant_5) - 2)]
-        + [np.mean(quant_5[-3:])]
-    )
-    smoothed_quant_95 = (
-        [np.mean(quant_95[:3])]
-        + [np.mean(quant_95[i : i + 2]) for i in range(len(quant_95) - 2)]
-        + [np.mean(quant_95[-3:])]
-    )
-    ax[0].plot(curve_freqs, smoothed_quant_5, c="red")
-    ax[0].plot(curve_freqs, smoothed_quant_95, c="red")
-
-    # fit exponential to quantiles
-    param_5, _ = curve_fit(test_exp, curve_freqs, smoothed_quant_5)
-    ans_5 = param_5[0] * np.exp(param_5[1] * curve_freqs)
-    ax[0].plot(curve_freqs, ans_5, c="red", linestyle="--")
-
-    param_95, _ = curve_fit(test_exp, curve_freqs, smoothed_quant_95)
-    ans_95 = param_95[0] * np.exp(param_95[1] * curve_freqs)
-    ax[0].plot(curve_freqs, ans_95, c="red", linestyle="--")
-
-    # plot quantiles from error distribution fit
-    # ax[0].plot(df["freqs"], df["q1"], c="orange", linestyle="--")
-    # ax[0].plot(df["freqs"], df["q2"], c="orange", linestyle="--")
-
-    ax[0].set_title(str(param_5) + ", " + str(param_95))
-
-    # ax[0].axvline(x=3.0)
-
-    # fit residuals
-
-    x_data = curve_freqs  # [inds]
-
-    quant_5 = np.array(quant_5)  # [inds]
-    quant_95 = np.array(quant_95)  # [inds]
-
-    ax[0].set_ylabel("residuals")
-
-    # plt.colorbar(label="counts")
-
-    spread = quant_95 - quant_5
-
-    # smooth out using a 3-point rolling average
-    smoothed_spread = (
-        [np.mean(spread[:3])]
-        + [np.mean(spread[i : i + 2]) for i in range(len(spread) - 2)]
-        + [np.mean(spread[-3:])]
-    )
-    # add end points
-
-    ax[1].scatter(x_data, spread)
-    ax[1].plot(x_data, smoothed_spread)
-
-    # Fit exponential
-    param, param_cov = curve_fit(test_exp, x_data, spread)
-    ans = param[0] * np.exp(param[1] * x_data)
-
-    ax[1].plot(x_data, ans, c="red")
-
-    ax[1].set_xscale("log")
-    ax[1].set_xlabel("frequency (Hz)")
-    ax[1].set_ylabel("spread")
-
-    ax[1].set_title(param)
-
-    plt.show()
-
-
-# Exponential function model
-def test_exp(x, a, b):
-    return a * np.exp(b * x)
-
-
-def pick_curves():
-    # possible curves
-
-    # params that give test asymmetric laplacian noise
-    # normal curve to use to invert it
-
-    sigma_data = noise_percent * data_true
-    data_obs = data_true + sigma_data * np.random.randn(len(periods))
-
-    lambd, kappa = 0.086, 0.92
-    # lambd, kappa = 0.086, 0.72
-
-    x = np.linspace(-100, 100, 100000)
-    mu = 0
-    lambd, kappa = noise_params
-    # lambd = scale * lambd
-
-    s = np.sign(x - mu)
-    pdf = (lambd / (kappa + 1 / kappa)) * np.exp(-(x - mu) * lambd * s * kappa**s)
-
-    # integrate distribution
-    # the cdf should go from 0 to 1
-    dx = x[1] - x[0]
-    cdf = np.cumsum(((pdf[:-1] + pdf[1:]) / 2) * dx)
-
-    noise = []
-    for _ in range(len(data_true)):
-        # generate a random uniform number between 0 and 1
-        n = np.random.uniform(0, 1)
-
-        # use to select value from inverse of cdf
-        ind = np.argmin(np.abs(cdf - n))
-        x_pick = (x[ind] + x[ind + 1]) / 2
-
-        noise.append(x_pick)
-
-    data_obs = data_true + noise
+    df = pd.DataFrame(df_dict)
+    df.to_csv("./results/curve_fitting/" + "sim-data" + "-" + dist + "-params.csv")
 
 
 if __name__ == "__main__":
-    site = "WH04"
-
-    # get list of possible frequencies to compute for selected site
-    max_path, curve_path, polygon_path = get_path(site)
-    # df_max = read_max_file(max_path)
-    # freqs = np.unique(df_max["frequency"])
-    curve_df = pd.read_csv(curve_path)
-    freqs = curve_df["freqs"]
-
-    # distribution_fitting(site=site, selected_freq=None, n_bins=60, polygon=False)
-
-    # distribution_fitting(site=site, selected_freq=3.4901715488706766, n_bins=50)
-    # distribution_fitting(
-    #     site=site, selected_freq=7.254554357068926, n_bins=60, polygon=True
-    # )
-
-    plot_residuals(site, plot_polygon=True)
-
-    """
-    # for frequencies less than 3 Hz, find one set of params
-    all_data_distribution_fitting(
-        site, dist="asym-laplace", n_bins=60, freq_range=[0, 3], polygon=True
+    error_distribution_fitting(
+        site="WH01",
+        dist="asym-laplace",
+        n_bins=60,
+        polygon=True,
+        fit_full_dataset=True,
+        frequency_scaling=True,
     )
-
-    # get params individually for higher frequencies
-    lambd_list, kappa_list = [], []
-    out_freqs = []
-    for f in freqs[freqs > 3]:
-        lambd, kappa = distribution_fitting(site, f, n_bins=60, polygon=True)
-        out_freqs.append(f)
-        lambd_list.append(lambd)
-        kappa_list.append(kappa)
-
-    df = pd.DataFrame({"freqs": out_freqs, "lambd": lambd_list, "kappa": kappa_list})
-    df.to_csv("./figures/curve_fitting/WH01/asym-laplace/params.csv")
-    """
-
-    # all_data_distribution_fitting_scale(
-    #     site, dist="asym-laplace", n_bins=60, polygon=True
-    # )
-    # lambda: 0.11352397886304381, kappa: 0.8359713871778693
-
-    # optimization_fitting_all(site, n_bins=60, polygon=True)

@@ -13,9 +13,10 @@ sys.path.append("./src/")
 from plotting.well_holes import *
 from plotting.inversion_plotting import *
 from plotting.data_plotting import *
-from processing.dispersion_curves import *
+from plotting.array_plotting import *
 
 
+from processing.distribution_fitting import *
 
 np.random.seed(0)
 
@@ -75,9 +76,9 @@ def setup_model(n_layers, site):
                 ),  # km
                 "vel_s": np.array(
                     [
-                        [0.100, 0.500], 
-                        [0.200, 2.000], 
-                        [0.200, 2.000], 
+                        [0.100, 0.500],
+                        [0.200, 2.000],
+                        [0.200, 2.000],
                         [0.200, 2.000],
                         [1.500, 3.000],
                     ]
@@ -103,10 +104,10 @@ def setup_model(n_layers, site):
                 "vel_s": np.array(
                     [
                         [0.100, 0.500],
-                        [0.200, 2.000], 
-                        [0.200, 2.000], 
-                        [0.200, 2.000], 
-                        [0.200, 2.000], 
+                        [0.200, 2.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000],
+                        [0.200, 2.000],
                         [1.500, 4.000],
                     ]
                 ),  # km/s
@@ -167,7 +168,7 @@ def setup_model(n_layers, site):
                         [0.100, 1.000],
                         [0.200, 2.000],
                         [0.200, 2.000],
-                        [0.200, 2.000], 
+                        [0.200, 2.000],
                         [1.500, 4.000],
                     ]
                 ),  # km/s
@@ -181,7 +182,13 @@ def setup_model(n_layers, site):
             # set up data and inversion params
             bounds = {
                 "depth": np.array(
-                    [[0.005, 0.125], [0.005, 0.125], [0.005, 0.400], [0.005, 0.400], [0.100, 0.400]]
+                    [
+                        [0.005, 0.125],
+                        [0.005, 0.125],
+                        [0.005, 0.400],
+                        [0.005, 0.400],
+                        [0.100, 0.400],
+                    ]
                 ),  # km
                 "vel_s": np.array(
                     [
@@ -189,7 +196,7 @@ def setup_model(n_layers, site):
                         [0.200, 2.000],
                         [0.200, 2.000],
                         [0.200, 2.000],
-                        [0.200, 2.000], 
+                        [0.200, 2.000],
                         [1.500, 4.000],
                     ]
                 ),  # km/s
@@ -250,7 +257,7 @@ def setup_model(n_layers, site):
                         [0.100, 1.000],
                         [0.200, 2.000],
                         [0.200, 2.000],
-                        [0.200, 2.000], 
+                        [0.200, 2.000],
                         [1.500, 4.000],
                     ]
                 ),  # km/s
@@ -264,7 +271,13 @@ def setup_model(n_layers, site):
             # set up data and inversion params
             bounds = {
                 "depth": np.array(
-                    [[0.005, 0.125], [0.005, 0.125], [0.005, 0.400], [0.005, 0.400], [0.100, 0.400]]
+                    [
+                        [0.005, 0.125],
+                        [0.005, 0.125],
+                        [0.005, 0.400],
+                        [0.005, 0.400],
+                        [0.100, 0.400],
+                    ]
                 ),  # km
                 "vel_s": np.array(
                     [
@@ -272,7 +285,7 @@ def setup_model(n_layers, site):
                         [0.200, 2.000],
                         [0.200, 2.000],
                         [0.200, 2.000],
-                        [0.200, 2.000], 
+                        [0.200, 2.000],
                         [1.500, 4.000],
                     ]
                 ),  # km/s
@@ -333,7 +346,7 @@ def setup_model(n_layers, site):
                         [0.100, 1.000],
                         [0.200, 2.000],
                         [0.200, 2.000],
-                        [0.200, 2.000], 
+                        [0.200, 2.000],
                         [1.500, 4.000],
                     ]
                 ),  # km/s
@@ -347,7 +360,13 @@ def setup_model(n_layers, site):
             # set up data and inversion params
             bounds = {
                 "depth": np.array(
-                    [[0.005, 0.125], [0.005, 0.125], [0.005, 0.400], [0.005, 0.400], [0.100, 0.400]]
+                    [
+                        [0.005, 0.125],
+                        [0.005, 0.125],
+                        [0.005, 0.400],
+                        [0.005, 0.400],
+                        [0.100, 0.400],
+                    ]
                 ),  # km
                 "vel_s": np.array(
                     [
@@ -355,12 +374,11 @@ def setup_model(n_layers, site):
                         [0.200, 2.000],
                         [0.200, 2.000],
                         [0.200, 2.000],
-                        [0.200, 2.000], 
+                        [0.200, 2.000],
                         [1.500, 4.000],
                     ]
                 ),  # km/s
             }
-
 
     model_params_kwargs = {
         "n_layers": n_layers,
@@ -439,10 +457,6 @@ def run_inversion():
 
 if __name__ == "__main__":
 
-<<<<<<< HEAD
-    run_inversion()
-    
-=======
     # max_path = "./results/fk/WH04/1C/conventional-WH04-longest-default08.max"
     # max_path = "./results/fk/WH04/2C/conventionaltransverse-WH04-longest-default03.max"
     # max_path = "./results/WH01/3C/rtbf-WH01-test01.max"
@@ -463,14 +477,15 @@ if __name__ == "__main__":
     # max_paths = [max_path.replace("4", str(i)) for i in np.arange(4, 10)]
     # plot_multiple_dispersion_curves(max_paths)
 
-    # plot_array_response("WH01")
-    # plot_raw_data("WH01")
-    # slice_noise_data()
-    # plot_array_layout()
-
-    # well_hole_plotting("WH02")
-
-    plot_curve_picking()
-
     # run_inversion()
->>>>>>> 9302e91da1f04f2deafb4e4532b8b836a863d706
+
+    """
+    error_distribution_fitting_by_full_dataset(
+        site="WH04",
+        dist="asym-laplace",
+        n_bins=60,
+        polygon=True,
+        frequency_scaling=True,
+    )
+    """
+    fit_simulated_dataset()

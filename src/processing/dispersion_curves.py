@@ -100,8 +100,8 @@ def read_max_file(max_file):
     names = [
         "abs_time",
         "frequency",
-        # "polarization",
         "slowness",
+        "polarization",
         "azimuth",
         "",
         "el",
@@ -112,6 +112,7 @@ def read_max_file(max_file):
 
     # read ".max" file as dataframe
     df = pd.read_csv(max_file, skiprows=ind, sep="\s+", names=names)
+    # df = pd.read_csv(max_file, skiprows=ind, sep="\\s", names=names)
     return df
 
 
@@ -169,7 +170,7 @@ def peak_picking():
 
 
 def setup_data(site):
-    p = "./results/curves/curve-"+site+"-1C.csv"
+    p = "./results/curves/curve-" + site + "-1C.csv"
     df = pd.read_csv(p)
     freqs, vels, stds = df["freqs"].values, df["vels"].values, df["stds"].values
 

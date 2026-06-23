@@ -4,32 +4,22 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+import matplotlib.dates as mdates
 
 
 def plot_raw_data(site):
-    # I would recommend applying a bandpass, or even just a high-pass filter >0.1 Hz.
-
     """
     Extract all vertical channel streams.
     Apply any desired simple processing (demean, detrend, high-pass filter)
     scale/normalize all traces (you might have to use a unique value since some traces have big spikes that would dwarf the normalization)
-    extract data as numpy array ( tr.data() ) and absolute times for each trace ( tr.times(type='utcdatetime') )
-    Plot all numpy arrays on the same figure. For each subsequent instrument/array, add a constant vertical shift to the array so that they plot above each other (the y axis now becomes meaningless).
-    However you managed to shift the arrays along the vertical axis (for example, each is shifted by a value of 1), then you can customize the y axis ticks ( ax.set_yticks([1,2,3,...,N]) ) and the corresponding tick labels ( ax.set_yticklabels( ['TP01', 'TP02', ..., 'TP10' ] ) )
     """
 
     if site == "WH01" or site == "WH02":
         # data_path = "./data/" + site + "/"
         data_path = "./data/" + site + "_3C_split/"
-        coords_path = (
-            "./data/" + site + "/txt_files/" + site + "_loc_corrected_geopsy.txt"
-        )
     elif site == "WH03" or site == "WH04":
         data_path = "./data/" + site + "/2025_WHY_MTS/"
-        coords_path = "./data/" + site + "/" + site + "_loc_corrected_geopsy.txt"
-
-    # read in coords file
-    # df = pd.read_csv(coords_path, names=["instrument", "x", "y"], sep="\s+")
 
     # assemble traces
     traces = []
@@ -52,38 +42,32 @@ def plot_raw_data(site):
                 elif site == "WH04":
                     tr = tr.trim(
                         # longest section WH04
-                        # starttime=UTCDateTime(2025, 10, 24, 1, 45, 0),
-                        # endtime=UTCDateTime(2025, 10, 24, 12, 30, 0),
+                        starttime=UTCDateTime(2025, 10, 24, 1, 45, 0),
+                        endtime=UTCDateTime(2025, 10, 24, 12, 30, 0),
                         # quietest section WH04
                         # starttime=UTCDateTime(2025, 10, 24, 8, 0, 0),
                         # endtime=UTCDateTime(2025, 10, 24, 11, 0, 0),
                         # plot section 1
-                        starttime=UTCDateTime(2025, 10, 24, 1, 45, 0),
-                        endtime=UTCDateTime(2025, 10, 24, 6, 30, 0),
+                        # starttime=UTCDateTime(2025, 10, 24, 1, 45, 0),
+                        # endtime=UTCDateTime(2025, 10, 24, 6, 30, 0),
                     )
-
-                """
-                # set distance
-                dist = np.sqrt(
-                    df["x"][df["instrument"] == "SS_" + str(instrument)] ** 2
-                    + df["y"][df["instrument"] == "SS_" + str(instrument)] ** 2
-                )
-                tr.stats.distance = dist
-                """
 
                 tr.detrend("demean")
                 tr.detrend("linear")
                 tr.filter("highpass", freq=1.0, corners=2, zerophase=True)
 
+                if site == "WH04":
+                    tr.decimate(factor=4, strict_length=False)
+
                 traces.append(tr)
 
     n_plots = len(traces)
     if n_plots > 15:
-        fig, ax = plt.subplots(nrows=1, ncols=2)
+        fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(16, 8))
         n_cols = 2
         mid = int(n_plots / 2)
     else:
-        fig, ax = plt.subplots(nrows=1, ncols=1)
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8, 8))
         n_cols = 1
     # fig, axes = plt.subplots(nrows=n_plots, sharex=True, sharey=True)
     station_names = []
@@ -106,21 +90,51 @@ def plot_raw_data(site):
                 ax[1].plot(times, (ind - mid) - 0.5 + plot_data, c="black")
         station_names.append(tr.stats["station"])
 
+    myFmt = mdates.DateFormatter("%H:%M")
     if n_cols == 1:
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
         ax.set_yticks(np.arange(n_plots), station_names)
+        ax.xaxis.set_major_formatter(myFmt)
     elif n_cols == 2:
         ax[0].set_yticks(np.arange(mid), station_names[:mid])
         ax[1].set_yticks(np.arange((n_plots - mid)), station_names[mid:])
+        ax[0].xaxis.set_major_locator(MaxNLocator(nbins=5))
+        ax[1].xaxis.set_major_locator(MaxNLocator(nbins=5))
+        ax[0].xaxis.set_major_formatter(myFmt)
+        ax[1].xaxis.set_major_formatter(myFmt)
 
-    plt.xlabel("time")
-    plt.ylabel("instrument")
     if n_cols == 1:
-        plt.title("site " + str(site) + " passive seismic recordings")
-    else:
-        plt.suptitle("site " + str(site) + " passive seismic recordings")
+        plt.xlabel("time")
+        plt.ylabel("instrument")
+    elif n_cols == 2:
+        fig.text(0.5, 0.04, "time", ha="center")
+        ax[0].set_ylabel("instrument")
+
+    plt.savefig("./figures/raw_data/" + site + "_traces.png")
+
+
+def plot_power_spectrum():
+    # Generating a sample musical note signal
+    fs = 1100  # Sampling frequency (Hz)
+    duration = 2  # seconds
+    frequency = 440  # A4 note frequency (Hz)
+    t = np.linspace(0, duration, int(fs * duration), endpoint=False)
+    signal = np.sin(2 * np.pi * frequency * t) + np.random.normal(
+        0, 1, len(t)
+    )  # Signal with noise
+
+    # Applying FFT
+    fft_result = np.fft.fft(signal)
+    freq = np.fft.fftfreq(t.shape[-1], d=1 / fs)
+
+    # Plotting the spectrum
+    plt.plot(freq, np.abs(fft_result))
+    plt.title("FFT of a Musical Note")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Amplitude")
     plt.show()
 
 
 if __name__ == "__main__":
-
+    # for site in ["WH01", "WH02", "WH03", "WH04"]:
     plot_raw_data(site="WH04")

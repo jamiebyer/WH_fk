@@ -12,6 +12,7 @@ from matplotlib.gridspec import GridSpec
 
 import matplotlib.image as img
 import xarray as xr
+import ast
 
 # import sys
 # sys.path.append("../src/")
@@ -33,6 +34,8 @@ import obspy
 from obspy import read, Stream, UTCDateTime
 import os
 
+import shapely
+from shapely import LineString, Point, Polygon
 
 # DATA
 
@@ -59,9 +62,9 @@ def read_max_file(max_file):
     names = [
         "abs_time",
         "frequency",
-        # "slowness",
-        "polarization",
         "slowness",
+        "polarization",
+        # "slowness",
         # "",
         "azimuth",
         "el",
@@ -1387,7 +1390,171 @@ def plot_curve_picking():
     plt.show()
 
 
-if __name__ == "__main__":
-    # max_path = "./results/WH01/conventional-WH01-test02.max"
-    # plot_computed_dispersion_curve_curr(max_path)
-    pass
+def get_path(site, transverse_comp=False):
+    max_path, curve_path = "", ""
+
+    if site == "WH01":
+        if transverse_comp:
+            max_path = "./results/fk/final/conventionaltransverse-WH01-default04.max"
+            curve_path = "./results/curves/og/curve-WH01-2C.csv"
+        else:
+            max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
+            curve_path = "./results/curves/curve-WH01-vertical-velocity-False.csv"
+    elif site == "WH02":
+        if transverse_comp:
+            max_path = "./results/fk/final/conventionaltransverse-WH02-default04.max"
+            curve_path = "./results/curves/og/curve-WH02-2C.csv"
+        else:
+            max_path = "./results/fk/final/conventional-WH02_3C_split-default08.max"
+            curve_path = "./results/curves/curve-WH02-vertical-velocity-False.csv"
+    elif site == "WH03":
+        if transverse_comp:
+            max_path = (
+                "./results/fk/final/conventionaltransverse-WH03-sliced-default04.max"
+            )
+            curve_path = "./results/curves/og/curve-WH03-2C.csv"
+        else:
+            max_path = "./results/fk/final/conventional-WH03-default08.max"
+            curve_path = "./results/curves/og/curve-WH03-1C.csv"
+    elif site == "WH04":
+        if transverse_comp:
+            max_path = (
+                "./results/fk/final/conventionaltransverse-WH04-longest-default04.max"
+            )
+            curve_path = "./results/curves/og/curve-WH04-2C.csv"
+        else:
+            max_path = "./results/fk/final/conventional-WH04-longest-default08.max"
+            curve_path = "./results/curves/curve-WH04-vertical-velocity-False.csv"
+
+    polygon_path = curve_path.replace(".csv", ".txt")
+
+    return max_path, curve_path, polygon_path
+
+
+def plot_computed_dispersion_curve_poster(site):
+    """
+    Plot dispersion curve from max file.
+    """
+    max_path, curve_path, polygon_path = get_path(site)
+
+    df_max = read_max_file(max_path)
+    freqs = np.unique(df_max["frequency"].values)
+    freqs_grid = df_max["frequency"].values
+    vels_grid = 1 / df_max["slowness"].values
+    # vels_grid = df_max["slowness"].values
+
+    n_bins = 200
+
+    curve_df = pd.read_csv(curve_path)
+
+    with open(polygon_path) as f:
+        contents = f.read()
+    # polygon = contents.replace("[", "").replace("]", "").split("), (")
+    polygon = ast.literal_eval(contents)
+
+    fig, ax = plt.subplots(2, 1, figsize=(16, 16), sharex=True)
+
+    freq_bins = np.logspace(
+        np.log10(np.min(freqs_grid)), np.log10(np.max(freqs_grid)), len(freqs) + 1
+    )
+    # vel_bins = np.logspace(
+    #     np.log10(np.min(vels_grid)), np.log10(np.max(vels_grid)), n_bins
+    # )
+    # vel_bins = np.linspace(np.min(vels_grid), np.max(vels_grid), n_bins)
+    vel_bins = np.linspace(50, 1250, n_bins)
+
+    # plot frequency and velocity 2D histogram
+    h = ax[0].hist2d(
+        freqs_grid,
+        vels_grid,
+        bins=[
+            freq_bins,
+            vel_bins,
+        ],
+        # cmap="coolwarm",
+        # norm=LogNorm(),
+        cmin=1,
+    )
+
+    x, y = Polygon(polygon).exterior.xy
+    ax[0].plot(x, y, c="red")
+
+    ax[0].set_xscale("log")
+    # plt.yscale("log")
+    # plt.ylim([100, 2200])
+    # plt.ylim([50, 2200])
+    ax[0].set_ylim([50, 1250])
+
+    ax[0].set_ylabel("phase velocity (m/s)", fontsize=20)
+
+    # plt.colorbar(label="counts")
+
+    ax[0].scatter(
+        curve_df["freqs"], curve_df["vels"], s=10, c="black", edgecolor="white"
+    )
+    ax[0].tick_params(axis="both", which="major", labelsize=18)
+
+    cbar = fig.colorbar(h[3], ax=ax[0])
+    cbar.set_ticks([])
+    # cbar.set_label("counts")
+    # cbar.ax.tick_params(labelsize=12)
+
+    for axis in [ax[0].xaxis, ax[0].yaxis]:
+        formatter = ScalarFormatter()
+        formatter.set_scientific(False)
+        axis.set_major_formatter(formatter)
+
+    # plt.grid(True)
+
+    # PLOT RESIDUALS
+
+    y_curve = curve_df["vels"]
+
+    # get freqs for dispersion curve
+    # get freqs_grid with the same frequencies as the dispersion curve.
+    curve_freqs = curve_df["freqs"]
+
+    residuals_freq = []
+    residuals_grid = []
+    quant_5 = []
+    quant_95 = []
+    for f in curve_freqs:
+        vels = vels_grid[np.isclose(freqs_grid, f)]
+        inds = [shapely.within(Point(f, v), Polygon(polygon)) for v in vels]
+        res = list(vels[inds] - y_curve[curve_freqs == f].values[0])
+        residuals_freq += list(np.repeat(f, len(res)))
+        residuals_grid += res
+        quant_5.append(np.quantile(res, 0.05))
+        quant_95.append(np.quantile(res, 0.95))
+
+    res_bins = np.linspace(np.min(residuals_grid), np.max(residuals_grid), n_bins)
+    h = ax[1].hist2d(
+        residuals_freq,
+        residuals_grid,
+        bins=[
+            freq_bins,
+            res_bins,
+        ],
+        # norm=LogNorm(),
+        # cmap="coolwarm",
+        cmin=1,
+    )
+
+    ax[1].axhline(y=0, c="black")
+
+    cbar = fig.colorbar(h[3], ax=ax[1])
+    cbar.set_ticks([])
+    # cbar.set_label("counts")
+    # cbar.ax.tick_params(labelsize=12)
+
+    ax[1].set_ylabel("residuals (m/s)", fontsize=20)
+    ax[1].set_xlabel("frequency (Hz)", fontsize=20)
+
+    ax[1].set_xticks([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30])
+    ax[1].set_ylim([-500, 500])
+
+    ax[1].tick_params(axis="both", which="major", labelsize=18)
+
+    # plt.tight_layout()
+    # plt.show()
+    plt.savefig("./figures/" + site + ".png")

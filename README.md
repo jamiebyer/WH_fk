@@ -48,7 +48,9 @@ Link to other related repos. (mapping, mcmc)
 - Fitting is done using a grid search, and minimizing the least squares of the data.
 - The f-k beamforming results at a particular frequency is a distribution of velocities. Fitting is done using the non-negative values of the histograms at each frequency. Minimizing the least-squares difference between these points and the corresponding point on the proposed error distribution.
 
-- Fit an exponential to the spread of the data to use for more parameterization of the data / to create synthetic data.
+- `write_spread`: get the spread of the data (difference between 5th and 95th percentile) and write to csv.
+- `error_fitting_by_full_dataset`: get error distribution parameters by using a grid search to get best fit. Save df to file with quantiles (to compare with spread) 
+
 
 ## Plotting
 List of figures and which file is used to create them.
@@ -62,3 +64,8 @@ List of figures and which file is used to create them.
 ### Array
 - Array configuration (`./src/plotting/array_plotting.py`)
 - Array response function (`./src/plotting/array_plotting.py`)
+
+### Dispersion curve
+- `./plotting/dispersion_curve_plotting.py`
+- Plot residuals and data spread
+- Fit an exponential to the spread of the data to use for more parameterization of the data / to create synthetic data.
