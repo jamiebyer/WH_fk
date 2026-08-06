@@ -12,11 +12,14 @@ from inversion.model_params import DispersionCurveParams
 sys.path.append("./src/")
 from plotting.well_holes import *
 from plotting.inversion_plotting import *
-from plotting.data_plotting import *
 from plotting.array_plotting import *
+from plotting.dispersion_curve_plotting import *
+from plotting.raw_data_plotting import *
 
 
 from processing.distribution_fitting import *
+from processing.distribution_fitting_by_freq import *
+from processing.envelope_fitting import *
 
 np.random.seed(0)
 
@@ -456,36 +459,44 @@ def run_inversion():
 
 
 if __name__ == "__main__":
-
-    # max_path = "./results/fk/WH04/1C/conventional-WH04-longest-default08.max"
-    # max_path = "./results/fk/WH04/2C/conventionaltransverse-WH04-longest-default03.max"
-    # max_path = "./results/WH01/3C/rtbf-WH01-test01.max"
-    # plot_computed_dispersion_curve_curr(max_path)
-
-    max_path = "./results/fk/final/conventional-WH01_3C_split-default08.max"
-    curve_path = "./results/curves/curve-WH01-1C.csv"
-    # plot_slowness(max_path, curve_path)
-    # [plot_dispersion_curve_frequency(max_path, freq=f) for f in np.arange(2, 12, 0.5)]
-    # plot_dispersion_curve_frequency(max_path, freq=6)
-
-    max_paths = [
-        "./results/fk/WH04/1C/conventional-WH04-longest-default06.max",
-        "./results/fk/WH04/2C/conventionaltransverse-WH04-longest-default03.max",
-    ]
-    # plot_double_dispersion_curves(max_paths)
-
-    # max_paths = [max_path.replace("4", str(i)) for i in np.arange(4, 10)]
-    # plot_multiple_dispersion_curves(max_paths)
-
     # run_inversion()
+
+    # plot_power_spectrum("WH04")
+
+    # plot_array_response("WH04")
+    # site WH01: 0.005, 0.015, 0.03, 0.04 & 0.05
+    # site WH02: 0.005, 0.015, 0.03, 0.04 & 0.05
+    # site WH03: 0.001, 0.004, 0.01, 0.02, 0.06 & 0.063 & 0.064, 0.151 & 0.152 & 0.156 & 0.162, 0.301 -0.314
+    # site WH04: 0.0088882-0.001, 0.004, 0.01, 0.02, 0.034, 0.06, 0.113-0.129
+    # plot_array_response_individual("WH01", d_range=[0.02, 0.035])
+    # plot_array_response_individual("WH03", d_range=[0.0005, 0.0015])
+
+    # plot_computed_dispersion_curve("WH01", k_limits=True)
+    # plot_residuals(site="WH01", subset_type="k_limits")
+
+    # plot_dc_subplots(
+    #     site="WH01", subset_type="k_limits", y_max=1200, remove_artifact=False
+    # )
+    # plot_fitting_parameters(site="WH02", remove_artifact=True)
+
+    KDE_fitting(site="WH01", y_max=1200, remove_artifact=True)
+    # GMM_fitting(site="WH02", y_max=1200, remove_artifact=False)
+
+    # error_distribution_fitting_by_individual_freqs(
+    #     site="WH01", dist="asym-laplace", n_bins=60, subset_type="k_limits"
+    # )
+    # error_distribution_fitting_by_individual_frequencies(
+    #     site="WH04", dist="asym-laplace", n_bins=60, subset_type="k_limits"
+    # )
 
     """
     error_distribution_fitting_by_full_dataset(
-        site="WH04",
+        site="WH02",
         dist="asym-laplace",
         n_bins=60,
-        polygon=True,
-        frequency_scaling=True,
+        subset_type="k_limits",
+        lambd_freq_scaling=True,
+        kappa_freq_scaling=True,
     )
     """
-    fit_simulated_dataset()
+    # fit_simulated_dataset()

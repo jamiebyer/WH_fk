@@ -14,126 +14,7 @@ from matplotlib.colors import LogNorm
 
 from scipy.optimize import curve_fit
 
-from utils.utils import read_max_file, get_path, get_k_limits, subset_data
-
-
-def get_scaling_parameters(site, subset_type, y_max, remove_artifact):
-    max_path, curve_path, polygon_path = get_path(site)
-
-    df_max = read_max_file(max_path)
-    freqs = np.unique(df_max["frequency"])
-    freqs_grid = df_max["frequency"]
-    vels_grid = 1 / df_max["slowness"]
-
-    curve_df = pd.read_csv(curve_path)
-
-    # if callback_context is None:
-    with open(polygon_path) as f:
-        contents = f.read()
-    # polygon = contents.replace("[", "").replace("]", "").split("), (")
-    polygon = ast.literal_eval(contents)
-
-    y_curve = curve_df["vels"]
-
-    # get freqs for dispersion curve
-    # get freqs_grid with the same frequencies as the dispersion curve.
-    curve_freqs = curve_df["freqs"]
-
-    k_min, k_max = get_k_limits(site)
-
-    residuals_freq, residuals_grid, quant_5, quant_95 = subset_data(
-        subset_type,
-        freqs_grid,
-        vels_grid,
-        curve_freqs,
-        y_curve,
-        polygon=None,
-        k_limits=[k_min, k_max],
-        y_max=y_max,
-        remove_artifact=remove_artifact,
-    )
-
-    # fit residuals
-
-    x_data = curve_freqs  # [inds]
-
-    quant_5 = np.array(quant_5)
-    quant_95 = np.array(quant_95)
-
-    # get None inds
-    # inds = [
-    #     ind
-    #     for ind in range(len(x_data))
-    #     if quant_5[ind] is None or quant_95[ind] is None
-    # ]
-
-    inds = []
-    if site == "WH01":
-        inds = [11, 56 + 1]
-    elif site == "WH02":
-        inds = [10, 72 + 1]
-    elif site == "WH04":
-        inds = [7, -1]
-    if len(inds) > 0:
-        x_spread = x_data[inds[0] : inds[1]]
-        y_spread = quant_95[inds[0] : inds[1]] - quant_5[inds[0] : inds[1]]
-        # y_ratio = np.abs(quant_95[max_ind:] / quant_5[max_ind:])
-        # y_ratio = np.abs(quant_5[inds[0] : inds[1]] / quant_95[inds[0] : inds[1]])
-        y_ratio = np.abs(quant_95[inds[0] : inds[1]] / quant_5[inds[0] : inds[1]])
-        # y_ratio = quant_95[max_ind:] + quant_5[max_ind:]
-    else:
-        x_spread = x_data
-        y_spread = quant_95 - quant_5
-        y_ratio = np.abs(quant_95 / quant_5)
-        # y_ratio = np.abs(quant_5 / quant_95)
-        # y_ratio = quant_95 + quant_5
-
-    # plt.colorbar(label="counts")
-
-    # smooth out using a 3-point rolling average
-    smoothed_spread = (
-        [np.mean(y_spread[:3])]
-        + [np.mean(y_spread[i : i + 2]) for i in range(len(y_spread) - 2)]
-        + [np.mean(y_spread[-3:])]
-    )
-    smoothed_ratio = (
-        [np.mean(y_ratio[:3])]
-        + [np.mean(y_ratio[i : i + 2]) for i in range(len(y_ratio) - 2)]
-        + [np.mean(y_ratio[-3:])]
-    )
-
-    # save smoothed spread to file
-    df = pd.DataFrame(
-        {
-            "freq": x_spread,
-            "spread": smoothed_spread,
-            "ratio": smoothed_ratio,
-        }
-    )
-    df.to_csv(
-        "./results/curves/spread/"
-        + site
-        + "_smoothed_spread_"
-        + str(remove_artifact)
-        + ".csv"
-    )
-
-    # add end points
-
-    ax.scatter(x_spread, y_spread, c="c")
-    ax.plot(x_spread, smoothed_spread, c="red")
-
-    ax2 = ax.twinx()
-    ax2.scatter(x_spread, y_ratio, c="b")
-    ax2.plot(x_spread, smoothed_ratio, c="red")
-
-    ax.set_xscale("log")
-    ax.set_xlabel("frequency (Hz)")
-    ax.set_ylabel("spread")
-    ax2.set_ylabel("ratio")
-
-    # plt.show()
-    return ax
+from utils.utils import read_max_file, get_path, get_k_limits
 
 
 def get_data(
@@ -320,7 +201,7 @@ def get_distribution(dist, dist_params, data_x, lambd_scale=1, kappa_scale=1):
     return data_pred
 
 
-def run_grid_search(dist, data_dict, lambd_scale=1, kappa_scale=1):
+def run_grid_search(dist, data_dict, selected_freq):
     """
     Search with coarse grid, then search with fine grid.
     """
@@ -365,7 +246,7 @@ def run_grid_search(dist, data_dict, lambd_scale=1, kappa_scale=1):
         # params = list(itertools.product(mu, lambd, kappa))
         params = list(itertools.product(lambd, kappa))
 
-    best_params = get_best_params(params, dist, data_dict, lambd_scale, kappa_scale)
+    best_params = get_best_params(params, dist, data_dict[selected_freq])
 
     # define range for fine grid based on values for params
     if dist == "normal":
@@ -401,41 +282,30 @@ def run_grid_search(dist, data_dict, lambd_scale=1, kappa_scale=1):
 
     # if the chosen params are one of the bounds, need to expand the range.
 
-    best_params = get_best_params(params, dist, data_dict, lambd_scale, kappa_scale)
+    best_params = get_best_params(params, dist, data_dict[selected_freq])
 
     return best_params
 
 
-def get_best_params(params, dist, data_dict, lambd_scale, kappa_scale):
+def get_best_params(params, dist, data_dict):
     """ """
     best_params = None
     best_lsq = np.inf
     for p in params:
-        lsq = 0
-        for i, (f, val) in enumerate(data_dict.items()):
-            # remove data with 0 counts
-            inds = val["counts"] != 0
-            if isinstance(lambd_scale, (list, np.ndarray)):
-                l_s = lambd_scale[i]
-            else:
-                l_s = lambd_scale
+        # remove data with 0 counts
+        inds = data_dict["counts"] != 0
 
-            if isinstance(kappa_scale, (list, np.ndarray)):
-                k_s = kappa_scale[i]
-            else:
-                k_s = kappa_scale
+        data_pred = get_distribution(dist, p, data_dict["x_data"][inds])
 
-            data_pred = get_distribution(dist, p, val["x_data"][inds], l_s, k_s)
+        nan_inds = np.isnan(data_pred)
 
-            nan_inds = np.isnan(data_pred)
+        # compare with data...
+        residuals = data_pred[~nan_inds] - data_dict["counts"][inds][~nan_inds]
 
-            # compare with data...
-            residuals = data_pred[~nan_inds] - val["counts"][inds][~nan_inds]
-
-            # only use non-nan, and non-zero count indices...
-            term = (1 / sum(~nan_inds)) * (np.sum(residuals**2))
-            lsq += term
-            # logL = -np.sum((residuals**2) / (2 * sigma_data**2))
+        # only use non-nan, and non-zero count indices...
+        term = (1 / sum(~nan_inds)) * (np.sum(residuals**2))
+        lsq = term
+        # logL = -np.sum((residuals**2) / (2 * sigma_data**2))
 
         if lsq < best_lsq:
             best_lsq = lsq
@@ -567,62 +437,18 @@ def optimization_fitting(site, n_bins, polygon):
     )
 
 
-def error_distribution_fitting_by_full_dataset(
-    site, dist, n_bins, subset_type, lambd_freq_scaling, kappa_freq_scaling
+def error_distribution_fitting_by_individual_frequencies(
+    site, dist, n_bins, subset_type
 ):
     """
     :param site: Site name ("WH01", "WH02", "WH03", "WH04")
     :param dist: Distribution type ("normal", "asym-laplace")
     :param n_bins:
-    :param freq_range:
-    :param polygon: Whether to do polygon clipping.
-    :param fit_full_dataset:
-    :param frequency_scaling: Only for fitting the full dataset.
-
-    Find error distribution parameters using data fit from residuals for full dataset
-    to get one set of parameters for the whole curve.
-    - Get scaling parameters from data spread.
-    - Perform a grid search to find best fit for error distribution parameters.
-    - Plot the data (residuals) at each frequency, and the distribution fit.
-    - Save parameters to csv.
     """
 
-    # 1. Scale the data at each frequency by the (smoothed) spread, and fit the scaled
-    # data all together to find one set of parameters.
-    # 2. Don't scale the data, and fit the unscaled data all together to find one set
-    # of parameters.
-    # 3. Fit each frequency with an individual set of parameters.
-
-    # For running the reverse mismatch inversion, I need to be able to fit a ASL distribution
-    # to the input noise distribution.
-    # With IID Gaussian noise, I can find a distribution using #2.
-    # With frequency scaled ASL noise, I can use #1.
-    # #3 remains from previous testing... would be nice to be able to run that way optionally.
-
-    # Will want to run with noise scenarios, save params, and then run inversion loading those params.
-
-    # Still need to loop over all frequencies in either scenario to do the frequency plots...
-    # For fitting to the whole dataset, the params are found before looping, for fitting
-    # individually, the params are found while iterating.
-    # Still want the residuals at each frequency for all scenarios for plotting.
-
-    # Scaled data: plot unscaled residuals for individual frequencies, and plot scaled residuals for all data
-
-    # get scaling from data spread
-    if lambd_freq_scaling or kappa_freq_scaling:
-        df = pd.read_csv(
-            "./results/curves/spread/" + site + "_smoothed_spread_True.csv"
-        )
-        # df = pd.read_csv(
-        #     "./results/curves/spread/" + site + "_smoothed_spread_False.csv"
-        # )
-        x_scale = df["freq"]
-        lambd_scale = 1 / (df["spread"].values / 1000)
-        kappa_scale = df["ratio"].values
-    if not lambd_freq_scaling:
-        lambd_scale = 1
-    if not kappa_freq_scaling:
-        kappa_scale = 1
+    # df = pd.read_csv("./results/curves/spread/" + site + "_smoothed_spread_True.csv")
+    df = pd.read_csv("./results/curves/spread/" + site + "_smoothed_spread_False.csv")
+    x_scale = df["freq"]
 
     # read in data and get histograms...
     k_min, k_max = get_k_limits(site)
@@ -633,26 +459,19 @@ def error_distribution_fitting_by_full_dataset(
         polygon=None,
         k_limits=[k_min, k_max],
         y_max=1200,
-        remove_artifact=True,
+        # remove_artifact=True,
+        remove_artifact=False,
         x_scale=x_scale,
     )
-
-    # grid search to get best distribution parameters
-    if lambd_freq_scaling and kappa_freq_scaling:
-        best_params = run_grid_search(
-            dist, data_dict, lambd_scale=lambd_scale, kappa_scale=kappa_scale
-        )
-    elif lambd_freq_scaling:
-        best_params = run_grid_search(dist, data_dict, lambd_scale=lambd_scale)
-    elif kappa_freq_scaling:
-        best_params = run_grid_search(dist, data_dict, kappa_scale=kappa_scale)
 
     # lists for storing quantiles and params at each frequency
     q1_list, q2_list = [], []
     params_list = []
     x = np.linspace(all_min, all_max, 100000)  # x for plotting pdf
     # loop over each frequency in dispersion curve frequencies
-    for ind, f in enumerate(curve_freqs):
+    for ind, f in enumerate(data_dict.keys()):
+        best_params = run_grid_search(dist, data_dict, f)
+
         fig, axs = plt.subplots(ncols=1, nrows=3, sharex=True)
 
         res = data_dict[f]["res"]
@@ -670,47 +489,16 @@ def error_distribution_fitting_by_full_dataset(
         # axs[0].set_xlim([min_res, max_res])
         axs[0].set_xlim([all_min, all_max])
 
-        if lambd_freq_scaling and kappa_freq_scaling:
-            data_pred = get_distribution(
-                dist,
-                best_params,
-                data_dict[f]["x_data"],
-                lambd_scale=lambd_scale[ind],
-                kappa_scale=kappa_scale[ind],
-            )
-            pdf = get_distribution(
-                dist,
-                best_params,
-                x,
-                lambd_scale=lambd_scale[ind],
-                kappa_scale=kappa_scale[ind],
-            )
-        elif lambd_freq_scaling:
-            data_pred = get_distribution(
-                dist,
-                best_params,
-                data_dict[f]["x_data"],
-                lambd_scale=lambd_scale[ind],
-            )
-            pdf = get_distribution(
-                dist,
-                best_params,
-                x,
-                lambd_scale=lambd_scale[ind],
-            )
-        elif kappa_freq_scaling:
-            data_pred = get_distribution(
-                dist,
-                best_params,
-                data_dict[f]["x_data"],
-                kappa_scale=kappa_scale[ind],
-            )
-            pdf = get_distribution(
-                dist,
-                best_params,
-                x,
-                kappa_scale=kappa_scale[ind],
-            )
+        data_pred = get_distribution(
+            dist,
+            best_params,
+            data_dict[f]["x_data"],
+        )
+        pdf = get_distribution(
+            dist,
+            best_params,
+            x,
+        )
 
         axs[0].plot(x, pdf)
         axs[1].plot(x, pdf)
@@ -733,7 +521,7 @@ def error_distribution_fitting_by_full_dataset(
         residuals = data_pred - data_dict[f]["counts"]
         axs[2].axhline(y=0, c="black")
         axs[2].scatter(data_dict[f]["x_data"][inds], residuals[inds])
-        axs[2].set_ylim([-0.25, 0.25])
+        # axs[2].set_ylim([-0.25, 0.25])
 
         params_list.append(best_params)
 
@@ -756,11 +544,7 @@ def error_distribution_fitting_by_full_dataset(
     if dist == "normal":
         pass
     elif dist == "asym-laplace":
-        if lambd_freq_scaling:
-            df_dict["scaled_lambd"] = lambd_scale * params_list[:, 0]
         df_dict["lambd"] = params_list[:, 0]
-        if kappa_freq_scaling:
-            df_dict["scaled_kappa"] = kappa_scale * params_list[:, 0]
         df_dict["kappa"] = params_list[:, 1]
 
     df = pd.DataFrame(df_dict)

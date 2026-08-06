@@ -1,7 +1,11 @@
 import os
 import datetime
 
+import numpy as np
 import pandas as pd
+
+import shapely
+from shapely import Point, Polygon
 
 
 def make_output_folder(dir_path):
@@ -122,3 +126,110 @@ def read_max_file(max_file):
     # df = pd.read_csv(max_file, skiprows=ind, sep="\s+", names=names)
     df = pd.read_csv(max_file, skiprows=ind, sep="\\s", names=names)
     return df
+
+
+def get_k_limits(site):
+    """
+    Get wavenumber limits from site array geometry.
+    """
+
+    if site in ["WH01", "WH02"]:
+        data_path = (
+            "./data/" + site + "/txt_files/" + site + "_loc_corrected_geopsy.txt"
+        )
+    elif site in ["WH03", "WH04"]:
+        data_path = "./data/" + site + "/" + site + "_loc_corrected_geopsy.txt"
+
+    df = pd.read_csv(data_path, names=["instrument", "x", "y"], sep="\s+")
+
+    x = df["x"].values
+    y = df["y"].values
+
+    dist = []
+    for i in range(len(df)):
+        for j in range(i + 1, len(df)):
+            if (x[i] == x[j]) and (y[i] == y[j]):
+                continue
+            d = np.sqrt((x[i] - x[j]) ** 2 + (y[i] - y[j]) ** 2)
+            dist.append(d)
+
+    d_min = np.min(dist)
+    d_max = np.max(dist)
+    print(d_min, d_max)
+
+    k_min = 2 * np.pi / d_max
+    k_max = 2 * np.pi / d_min
+    print(k_min, k_max)
+
+    return k_min, k_max
+
+
+def subset_data(
+    subset_type,
+    freqs_grid,
+    vels_grid,
+    curve_freqs,
+    y_curve,
+    polygon=None,
+    k_limits=None,
+    y_max=None,
+    remove_artifact=False,
+):
+    """
+    subset data, either using the polygon or the k limits.
+    """
+    residuals_freq = []
+    residuals_grid = []
+    quant_5 = []
+    quant_95 = []
+    for f in curve_freqs:
+        vels = vels_grid[np.isclose(freqs_grid, f)].values
+        if subset_type == "polygon":
+            # subset with polygon
+            inds = [shapely.within(Point(f, v), Polygon(polygon)) for v in vels]
+            res = list(vels[inds] - y_curve[curve_freqs == f].values[0])
+        elif subset_type == "k_limits":
+            # subset with the k limits
+            # k = 2*pi*f / v_p
+            # v_1 = 2*pi*f/k
+            max_1 = np.array(2 * np.pi * f / k_limits[0])  # smaller max
+            min_1 = np.array(2 * np.pi * f / k_limits[1])  # smaller min
+            max_2 = np.array(2 * np.pi * f / (k_limits[0] / 2))  # larger max
+            min_2 = np.array(2 * np.pi * f / (k_limits[1] / 2))  # larger min
+
+            # original subset (with ymax)
+            # res = list(
+            #     vels[(vels >= min_1) & (vels <= max_2) & (vels <= y_max)]
+            #     - y_curve[curve_freqs == f].values[0]
+            # )
+            # use k limits to select dispersion curve vals (but not spread of hist)
+            # still subset for the aliasing limit
+
+            if (y_curve[curve_freqs == f].values[0] >= min_2) and (
+                y_curve[curve_freqs == f].values[0] <= max_2
+            ):
+                if remove_artifact:
+                    res = list(
+                        vels[(vels >= min_2) & (vels <= y_max)]
+                        - y_curve[curve_freqs == f].values[0]
+                    )
+                else:
+                    res = list(
+                        vels[vels <= y_max] - y_curve[curve_freqs == f].values[0]
+                    )
+            else:
+                res = []
+
+        else:
+            res = list(vels - y_curve[curve_freqs == f].values[0])
+        residuals_freq += list(np.repeat(f, len(res)))
+        residuals_grid += res
+
+        if res:
+            quant_5.append(np.quantile(res, 0.05))
+            quant_95.append(np.quantile(res, 0.95))
+        else:
+            quant_5.append(None)
+            quant_95.append(None)
+
+    return residuals_freq, residuals_grid, quant_5, quant_95

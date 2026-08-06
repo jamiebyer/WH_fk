@@ -113,25 +113,70 @@ def plot_raw_data(site):
     plt.savefig("./figures/raw_data/" + site + "_traces.png")
 
 
-def plot_power_spectrum():
-    # Generating a sample musical note signal
-    fs = 1100  # Sampling frequency (Hz)
-    duration = 2  # seconds
-    frequency = 440  # A4 note frequency (Hz)
-    t = np.linspace(0, duration, int(fs * duration), endpoint=False)
-    signal = np.sin(2 * np.pi * frequency * t) + np.random.normal(
-        0, 1, len(t)
-    )  # Signal with noise
+def plot_power_spectrum(site):
+    # read in miniseeds for full site...
+    if site == "WH01" or site == "WH02":
+        # data_path = "./data/" + site + "/"
+        data_path = "./data/" + site + "_3C_split/"
+    elif site == "WH03" or site == "WH04":
+        data_path = "./data/" + site + "/2025_WHY_MTS/"
+
+    # assemble traces
+    traces = []
+    for file in os.listdir(data_path):
+        if ".miniseed" in file or ".mseed" in file:
+            stream = read(data_path + file)
+            instrument = stream[0].stats["station"]
+            chan = stream[0].stats["channel"]
+            if chan == "EPZ" or chan == "HHZ":
+                # slice data
+                # 6:30 - 9:30
+                # 00:48 - 13:17
+                tr = stream[0]
+                fs = tr.stats["delta"]
+
+                if site == "WH03":
+                    tr = tr.trim(
+                        # longest section WH03
+                        starttime=UTCDateTime(2025, 10, 23, 19, 00, 00),
+                        endtime=UTCDateTime(2025, 10, 23, 21, 15, 00),
+                    )
+                elif site == "WH04":
+                    tr = tr.trim(
+                        # longest section WH04
+                        starttime=UTCDateTime(2025, 10, 24, 1, 45, 0),
+                        endtime=UTCDateTime(2025, 10, 24, 12, 30, 0),
+                    )
+
+                tr.detrend("demean")
+                tr.detrend("linear")
+                tr.filter("highpass", freq=1.0, corners=2, zerophase=True)
+
+                if site == "WH04":
+                    tr.decimate(factor=4, strict_length=False)
+
+                traces.append(tr)
 
     # Applying FFT
-    fft_result = np.fft.fft(signal)
-    freq = np.fft.fftfreq(t.shape[-1], d=1 / fs)
+    freqs = []
+    ffts = []
+    for tr in traces:
+        # freq = np.fft.fftfreq(len(tr), d=1 / fs)
+        freq = np.fft.fftfreq(len(tr), d=fs)
+        fft_result = np.fft.fft(tr.data)
 
-    # Plotting the spectrum
-    plt.plot(freq, np.abs(fft_result))
-    plt.title("FFT of a Musical Note")
+        freqs += list(freq)
+        ffts += list(np.real(fft_result))
+
+        # Plotting the spectrum
+        # plt.plot(freq, np.abs(fft_result), c="grey", alpha=0.1)
+
+    plt.hist2d(freqs, ffts, bins=[200, 200], cmin=1)
+    plt.colorbar()
+
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("Amplitude")
+    plt.title(site)
     plt.show()
 
 
