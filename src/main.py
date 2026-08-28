@@ -15,13 +15,14 @@ from plotting.inversion_plotting import *
 from plotting.array_plotting import *
 from plotting.dispersion_curve_plotting import *
 from plotting.raw_data_plotting import *
+from plotting.distribution_fitting_plotting import *
 
 
 from processing.distribution_fitting import *
 from processing.distribution_fitting_by_freq import *
 from processing.envelope_fitting import *
 
-np.random.seed(0)
+# np.random.seed(0)
 
 
 def setup_model(n_layers, site):
@@ -475,28 +476,32 @@ if __name__ == "__main__":
     # plot_residuals(site="WH01", subset_type="k_limits")
 
     # plot_dc_subplots(
-    #     site="WH01", subset_type="k_limits", y_max=1200, remove_artifact=False
+    #     site="WH04", subset_type="k_limits", y_max=1200, remove_artifact=False
     # )
-    # plot_fitting_parameters(site="WH02", remove_artifact=True)
 
-    KDE_fitting(site="WH01", y_max=1200, remove_artifact=True)
+    # get_scaling_params(
+    #     site="WH02", subset_type="k_limits", y_max=1200, remove_artifact=True
+    # )
+    # plot_scaling_parameters(site="WH04", remove_artifact=False, remove_outliers=True)
+    # plot_scaling_parameters_v2(site="WH01", remove_artifact=True, remove_outliers=True)
+
+    # KDE_fitting(site="WH01", y_max=1200, remove_artifact=True)
     # GMM_fitting(site="WH02", y_max=1200, remove_artifact=False)
 
-    # error_distribution_fitting_by_individual_freqs(
-    #     site="WH01", dist="asym-laplace", n_bins=60, subset_type="k_limits"
-    # )
     # error_distribution_fitting_by_individual_frequencies(
-    #     site="WH04", dist="asym-laplace", n_bins=60, subset_type="k_limits"
+    #     site="WH01", dist="normal", n_bins=60, subset_type="k_limits"
     # )
-
+    fit_normal_dist(site="WH01", dist="normal", n_bins=60, subset_type="k_limits")
     """
-    error_distribution_fitting_by_full_dataset(
-        site="WH02",
-        dist="asym-laplace",
-        n_bins=60,
-        subset_type="k_limits",
-        lambd_freq_scaling=True,
-        kappa_freq_scaling=True,
-    )
+    for site in ["WH01", "WH02", "WH03", "WH04"]:
+        error_distribution_fitting_by_full_dataset(
+            site=site,
+            dist="asym-laplace",
+            n_bins=60,
+            subset_type="k_limits",
+            remove_artifact=False,
+            lambd_freq_scaling=False,
+            kappa_freq_scaling=True,
+        )
     """
-    # fit_simulated_dataset()
+    fit_simulated_dataset(kappa_scaling=True)

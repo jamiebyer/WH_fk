@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 
 from sklearn.neighbors import KernelDensity
 from sklearn.mixture import GaussianMixture
+from scipy import stats
 
 from utils.utils import read_max_file, get_path, get_k_limits
 
@@ -34,6 +35,7 @@ def get_data(site, y_max, remove_artifact):
 
     # save points that are within the polygon
     points = []
+    weights = []
     for ind, f in enumerate(curve_freqs):
         vels = vels_grid[np.isclose(freqs_grid, f)].values
 
@@ -62,9 +64,11 @@ def get_data(site, y_max, remove_artifact):
 
         res = np.array(res) / 1000
 
-        points += [[f, r] for r in res]
+        if len(res) > 0:
+            points += [[f, r] for r in res]
+            weights += [1 / len(res)] * len(res)
 
-    return np.array(points)
+    return np.array(points), weights
 
 
 def get_CI():
@@ -73,7 +77,10 @@ def get_CI():
 
 
 def KDE_fitting(site, y_max, remove_artifact):
-    points = get_data(site, y_max, remove_artifact)
+    points, weights = get_data(site, y_max, remove_artifact)
+
+    kern = stats.gaussian_kde(points.T, bw_method=0.75, weights=weights)
+    """
     kde = KernelDensity(
         kernel="gaussian",
         # bandwidth="scott",
@@ -81,7 +88,7 @@ def KDE_fitting(site, y_max, remove_artifact):
         bandwidth=0.3,
         # breadth_first=False,
     ).fit(points)
-
+    """
     # make a grid of points in the sample space
     X, Y = np.meshgrid(
         np.linspace(np.min(points[:, 0]), np.max(points[:, 0]), 100),
@@ -89,7 +96,8 @@ def KDE_fitting(site, y_max, remove_artifact):
     )
     plot_points = np.array([X.flatten(), Y.flatten()]).T
 
-    prob = np.reshape(np.exp(kde.score_samples(plot_points)), (100, 100))
+    # prob = np.reshape(np.exp(kde.score_samples(plot_points)), (100, 100))
+    prob = np.reshape(np.exp(kern(plot_points.T)), (100, 100))
 
     plt.hist2d(points[:, 0], points[:, 1], bins=[50, 50], cmin=1)
     plt.colorbar()

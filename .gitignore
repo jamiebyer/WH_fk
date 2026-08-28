@@ -1,7 +1,7 @@
 .vscode/
 ./figures/
+./results/
 ./params/
 ./geopsypack-src-3.5.2/
-./results/
 ./src/fk_processing/__pycache__/*
 ./src/plotting/__pycache__/*

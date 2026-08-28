@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -11,35 +13,56 @@ import shapely
 from shapely import LineString, Point, Polygon
 
 from matplotlib.colors import LogNorm
-
+from collections import OrderedDict
 from scipy.optimize import curve_fit
 
 from utils.utils import read_max_file, get_path, get_k_limits, subset_data
 
 
-def get_scaling_parameters(site, subset_type, y_max, remove_artifact):
+def smooth_scaling_params(x_freqs, y_spread, y_ratio, bw):
+    # smooth out using a 3-point rolling average
+    """
+    smoothed_spread = (
+        [np.mean(y_spread[:3])]
+        + [np.mean(y_spread[i : i + 2]) for i in range(len(y_spread) - 2)]
+        + [np.mean(y_spread[-3:])]
+    )
+    smoothed_ratio = (
+        [np.mean(y_ratio[:3])]
+        + [np.mean(y_ratio[i : i + 2]) for i in range(len(y_ratio) - 2)]
+        + [np.mean(y_ratio[-3:])]
+    )
+    """
+    # smooth using bandwidth
+    smoothed_y_spread, smoothed_y_ratio = [], []
+    for i, f in enumerate(x_freqs):
+        freq_lims = [(1 - bw) * f, (1 + bw) * f]
+        inds = (x_freqs >= freq_lims[0]) & (x_freqs <= freq_lims[1])
+        smoothed_y_spread.append(np.mean(y_spread[inds]))
+        smoothed_y_ratio.append(np.mean(y_ratio[inds]))
+
+    return smoothed_y_spread, smoothed_y_ratio
+
+
+def get_scaling_params(site, subset_type, y_max, remove_artifact):
     max_path, curve_path, polygon_path = get_path(site)
 
     df_max = read_max_file(max_path)
-    freqs = np.unique(df_max["frequency"])
     freqs_grid = df_max["frequency"]
     vels_grid = 1 / df_max["slowness"]
 
     curve_df = pd.read_csv(curve_path)
 
-    # if callback_context is None:
-    with open(polygon_path) as f:
-        contents = f.read()
-    # polygon = contents.replace("[", "").replace("]", "").split("), (")
-    polygon = ast.literal_eval(contents)
+    if subset_type == "polygon":
+        with open(polygon_path) as f:
+            contents = f.read()
+        polygon = ast.literal_eval(contents)
+    elif subset_type == "k_limits":
+        k_min, k_max = get_k_limits(site)
 
-    y_curve = curve_df["vels"]
-
-    # get freqs for dispersion curve
-    # get freqs_grid with the same frequencies as the dispersion curve.
+    # dispersion curve freqs and vels
     curve_freqs = curve_df["freqs"]
-
-    k_min, k_max = get_k_limits(site)
+    y_curve = curve_df["vels"]
 
     residuals_freq, residuals_grid, quant_5, quant_95 = subset_data(
         subset_type,
@@ -53,20 +76,6 @@ def get_scaling_parameters(site, subset_type, y_max, remove_artifact):
         remove_artifact=remove_artifact,
     )
 
-    # fit residuals
-
-    x_data = curve_freqs  # [inds]
-
-    quant_5 = np.array(quant_5)
-    quant_95 = np.array(quant_95)
-
-    # get None inds
-    # inds = [
-    #     ind
-    #     for ind in range(len(x_data))
-    #     if quant_5[ind] is None or quant_95[ind] is None
-    # ]
-
     inds = []
     if site == "WH01":
         inds = [11, 56 + 1]
@@ -74,66 +83,43 @@ def get_scaling_parameters(site, subset_type, y_max, remove_artifact):
         inds = [10, 72 + 1]
     elif site == "WH04":
         inds = [7, -1]
+
     if len(inds) > 0:
-        x_spread = x_data[inds[0] : inds[1]]
-        y_spread = quant_95[inds[0] : inds[1]] - quant_5[inds[0] : inds[1]]
-        # y_ratio = np.abs(quant_95[max_ind:] / quant_5[max_ind:])
-        # y_ratio = np.abs(quant_5[inds[0] : inds[1]] / quant_95[inds[0] : inds[1]])
-        y_ratio = np.abs(quant_95[inds[0] : inds[1]] / quant_5[inds[0] : inds[1]])
-        # y_ratio = quant_95[max_ind:] + quant_5[max_ind:]
+        quant_5 = np.array(quant_5[inds[0] : inds[1]])
+        quant_95 = np.array(quant_95[inds[0] : inds[1]])
+        x_spread = curve_freqs[inds[0] : inds[1]]
     else:
-        x_spread = x_data
-        y_spread = quant_95 - quant_5
-        y_ratio = np.abs(quant_95 / quant_5)
-        # y_ratio = np.abs(quant_5 / quant_95)
-        # y_ratio = quant_95 + quant_5
+        x_spread = curve_freqs
+        quant_5 = np.array(quant_5)
+        quant_95 = np.array(quant_95)
 
-    # plt.colorbar(label="counts")
+    y_spread = quant_95 - quant_5
+    y_ratio = np.abs(quant_5 / quant_95)
 
-    # smooth out using a 3-point rolling average
-    smoothed_spread = (
-        [np.mean(y_spread[:3])]
-        + [np.mean(y_spread[i : i + 2]) for i in range(len(y_spread) - 2)]
-        + [np.mean(y_spread[-3:])]
-    )
-    smoothed_ratio = (
-        [np.mean(y_ratio[:3])]
-        + [np.mean(y_ratio[i : i + 2]) for i in range(len(y_ratio) - 2)]
-        + [np.mean(y_ratio[-3:])]
+    # smooth scaling params
+    smoothed_spread, smoothed_ratio = smooth_scaling_params(
+        x_spread, y_spread, y_ratio, bw=0.1
     )
 
     # save smoothed spread to file
     df = pd.DataFrame(
         {
             "freq": x_spread,
-            "spread": smoothed_spread,
-            "ratio": smoothed_ratio,
+            "q5": quant_5,
+            "q95": quant_95,
+            "spread": y_spread,
+            "ratio": y_ratio,
+            "smoothed_spread": smoothed_spread,
+            "smoothed_ratio": smoothed_ratio,
         }
     )
     df.to_csv(
-        "./results/curves/spread/"
+        "./results/curve_fitting/scaling_params/"
         + site
-        + "_smoothed_spread_"
+        + "_scaling_params_"
         + str(remove_artifact)
         + ".csv"
     )
-
-    # add end points
-
-    ax.scatter(x_spread, y_spread, c="c")
-    ax.plot(x_spread, smoothed_spread, c="red")
-
-    ax2 = ax.twinx()
-    ax2.scatter(x_spread, y_ratio, c="b")
-    ax2.plot(x_spread, smoothed_ratio, c="red")
-
-    ax.set_xscale("log")
-    ax.set_xlabel("frequency (Hz)")
-    ax.set_ylabel("spread")
-    ax2.set_ylabel("ratio")
-
-    # plt.show()
-    return ax
 
 
 def get_data(
@@ -568,7 +554,13 @@ def optimization_fitting(site, n_bins, polygon):
 
 
 def error_distribution_fitting_by_full_dataset(
-    site, dist, n_bins, subset_type, lambd_freq_scaling, kappa_freq_scaling
+    site,
+    dist,
+    n_bins,
+    subset_type,
+    remove_artifact,
+    lambd_freq_scaling,
+    kappa_freq_scaling,
 ):
     """
     :param site: Site name ("WH01", "WH02", "WH03", "WH04")
@@ -611,14 +603,16 @@ def error_distribution_fitting_by_full_dataset(
     # get scaling from data spread
     if lambd_freq_scaling or kappa_freq_scaling:
         df = pd.read_csv(
-            "./results/curves/spread/" + site + "_smoothed_spread_True.csv"
+            "./results/curve_fitting/scaling_params/"
+            + site
+            + "_scaling_params_"
+            + str(remove_artifact)
+            + ".csv"
         )
-        # df = pd.read_csv(
-        #     "./results/curves/spread/" + site + "_smoothed_spread_False.csv"
-        # )
+
         x_scale = df["freq"]
-        lambd_scale = 1 / (df["spread"].values / 1000)
-        kappa_scale = df["ratio"].values
+        lambd_scale = 1 / (df["smoothed_spread"].values / 1000)
+        kappa_scale = df["smoothed_ratio"].values
     if not lambd_freq_scaling:
         lambd_scale = 1
     if not kappa_freq_scaling:
@@ -633,20 +627,32 @@ def error_distribution_fitting_by_full_dataset(
         polygon=None,
         k_limits=[k_min, k_max],
         y_max=1200,
-        remove_artifact=True,
+        remove_artifact=remove_artifact,
         x_scale=x_scale,
     )
 
     # grid search to get best distribution parameters
+    fig_dir = "./figures/curve_fitting/remove_artifact_" + str(remove_artifact) + "/"
+    out_dir = "./results/curve_fitting/remove_artifact_" + str(remove_artifact) + "/"
     if lambd_freq_scaling and kappa_freq_scaling:
+        fig_dir += "both_scaling/" + site + "-" + dist + "/"
+        out_dir += "both_scaling/"
         best_params = run_grid_search(
             dist, data_dict, lambd_scale=lambd_scale, kappa_scale=kappa_scale
         )
     elif lambd_freq_scaling:
+        fig_dir += "lambd_scaling/" + site + "-" + dist + "/"
+        out_dir += "lambd_scaling/"
         best_params = run_grid_search(dist, data_dict, lambd_scale=lambd_scale)
     elif kappa_freq_scaling:
+        fig_dir += "kappa_scaling/" + site + "-" + dist + "/"
+        out_dir += "kappa_scaling/"
         best_params = run_grid_search(dist, data_dict, kappa_scale=kappa_scale)
 
+    if not os.path.isdir(fig_dir):
+        os.mkdir(fig_dir)
+    if not os.path.isdir(out_dir):
+        os.mkdir(out_dir)
     # lists for storing quantiles and params at each frequency
     q1_list, q2_list = [], []
     params_list = []
@@ -737,17 +743,7 @@ def error_distribution_fitting_by_full_dataset(
 
         params_list.append(best_params)
 
-        plt.savefig(
-            "./figures/curve_fitting/"
-            + site
-            + "-"
-            + dist
-            + "/"
-            + site
-            + "-"
-            + str(np.round(f, 2))
-            + ".png"
-        )
+        plt.savefig(fig_dir + site + "-" + str(np.round(f, 2)) + ".png")
         plt.close()
 
     params_list = np.array(params_list)
@@ -760,11 +756,11 @@ def error_distribution_fitting_by_full_dataset(
             df_dict["scaled_lambd"] = lambd_scale * params_list[:, 0]
         df_dict["lambd"] = params_list[:, 0]
         if kappa_freq_scaling:
-            df_dict["scaled_kappa"] = kappa_scale * params_list[:, 0]
+            df_dict["scaled_kappa"] = kappa_scale * params_list[:, 1]
         df_dict["kappa"] = params_list[:, 1]
 
     df = pd.DataFrame(df_dict)
-    df.to_csv("./results/curve_fitting/" + site + "-" + dist + "-params.csv")
+    df.to_csv(out_dir + site + "-" + dist + "-params.csv")
 
 
 def get_noise_pdf(noise_dist, noise_params, freq_ind=None, mu=0):
@@ -862,20 +858,18 @@ def generate_noise_dist(freqs, noise_dist, noise_params):
 
 def get_simulated_data(n_bins):
     """ """
+
+    df = pd.read_csv("./results/curve_fitting/WH01-normal-params.csv")
+    std = df["std"]
     # generate simulated data
     noise_dist = "normal"
     # noise_dist = "asym-laplace"
-    noise_params = {"frequency_scaling": False, "std": 0.075}
-    """
     noise_params = {
-        "frequency_scaling": False,
-        "lambd_scale": 1,
-        "lambd": 6.8,
-        "kappa": 0.72,
+        "std": std,
     }
-    """
-    n_data = 100
-    freqs = 1 / np.logspace(0, 1.1, n_data)
+
+    n_data = 46
+    freqs = np.logspace(0, 1.3, n_data)
     (
         freqs_grid,
         vels_grid,
@@ -890,7 +884,7 @@ def get_simulated_data(n_bins):
     vels_grid = np.array(vels_grid)
     curve_freqs = np.unique(freqs_grid)
 
-    data_dict = {}
+    data_dict = OrderedDict({})
     # save points that are within the polygon
     all_res = []
     for ind, f in enumerate(curve_freqs):
@@ -938,7 +932,7 @@ def get_simulated_data(n_bins):
     return min_res, max_res, curve_freqs, data_x, counts, all_res, data_dict
 
 
-def fit_simulated_dataset(n_bins=60):
+def fit_simulated_dataset(kappa_scaling, n_bins=60):
     dist = "asym-laplace"
 
     # read in data and get histograms...
@@ -946,8 +940,14 @@ def fit_simulated_dataset(n_bins=60):
         get_simulated_data(n_bins)
     )
 
-    # grid search to get best distribution parameters
-    best_params = run_grid_search(dist, data_dict)
+    if kappa_scaling:
+        quant_5 = np.array([data_dict[f]["quant_5"] for f in data_dict.keys()])
+        quant_95 = np.array([data_dict[f]["quant_95"] for f in data_dict.keys()])
+        y_ratio = np.abs(quant_5 / quant_95)
+        # grid search to get best distribution parameters
+        best_params = run_grid_search(dist, data_dict, kappa_scale=y_ratio)
+    else:
+        best_params = run_grid_search(dist, data_dict)
 
     # lists for storing quantiles and params at each frequency
     q1_list, q2_list = [], []
@@ -973,8 +973,16 @@ def fit_simulated_dataset(n_bins=60):
         # axs[0].set_xlim([min_res, max_res])
         # axs[0].set_xlim([all_min, all_max])
 
-        data_pred = get_distribution(dist, best_params, data_dict[f]["x_data"])
-        pdf = get_distribution(dist, best_params, x)
+        if kappa_scaling:
+            data_pred = get_distribution(
+                dist, best_params, data_dict[f]["x_data"], kappa_scale=y_ratio[ind]
+            )
+            pdf = get_distribution(dist, best_params, x, kappa_scale=y_ratio[ind])
+        else:
+            data_pred = get_distribution(
+                dist, best_params, data_dict[f]["x_data"], kappa_scale=y_ratio[ind]
+            )
+            pdf = get_distribution(dist, best_params, x)
 
         axs[0].plot(x, pdf)
         axs[1].plot(x, pdf)
@@ -1021,6 +1029,8 @@ def fit_simulated_dataset(n_bins=60):
         pass
     elif dist == "asym-laplace":
         df_dict["lambd"] = params_list[:, 0]
+        if kappa_scaling:
+            df_dict["scaled_kappa"] = y_ratio * params_list[:, 1]
         df_dict["kappa"] = params_list[:, 1]
 
     df = pd.DataFrame(df_dict)

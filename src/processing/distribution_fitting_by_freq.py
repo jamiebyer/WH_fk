@@ -209,8 +209,8 @@ def run_grid_search(dist, data_dict, selected_freq):
     # make coarse grid of params to search for first iteration.
     if dist == "normal":
         # Gaussian params
-        mu_min, mu_max = -150, 150
-        sigma_min, sigma_max = 0.001, 150
+        mu_min, mu_max = -5, 5
+        sigma_min, sigma_max = 0.001, 50
 
         mu = np.linspace(mu_min, mu_max, 200)
         sigma = np.linspace(sigma_min, sigma_max, 200)
@@ -446,8 +446,12 @@ def error_distribution_fitting_by_individual_frequencies(
     :param n_bins:
     """
 
-    # df = pd.read_csv("./results/curves/spread/" + site + "_smoothed_spread_True.csv")
-    df = pd.read_csv("./results/curves/spread/" + site + "_smoothed_spread_False.csv")
+    df = pd.read_csv(
+        "./results/curve_fitting/scaling_params/"
+        + site
+        + "_scaling_params_True"
+        + ".csv"
+    )
     x_scale = df["freq"]
 
     # read in data and get histograms...
@@ -459,8 +463,8 @@ def error_distribution_fitting_by_individual_frequencies(
         polygon=None,
         k_limits=[k_min, k_max],
         y_max=1200,
-        # remove_artifact=True,
-        remove_artifact=False,
+        remove_artifact=True,
+        # remove_artifact=False,
         x_scale=x_scale,
     )
 
@@ -542,7 +546,8 @@ def error_distribution_fitting_by_individual_frequencies(
 
     df_dict = {"freqs": curve_freqs, "q1": q1_list, "q2": q2_list}
     if dist == "normal":
-        pass
+        df_dict["mu"] = params_list[:, 0]
+        df_dict["std"] = params_list[:, 1]
     elif dist == "asym-laplace":
         df_dict["lambd"] = params_list[:, 0]
         df_dict["kappa"] = params_list[:, 1]
@@ -644,102 +649,42 @@ def generate_noise_dist(freqs, noise_dist, noise_params):
     )
 
 
-def get_simulated_data(n_bins):
-    """ """
-    # generate simulated data
-    noise_dist = "normal"
-    # noise_dist = "asym-laplace"
-    noise_params = {"frequency_scaling": False, "std": 0.075}
+def fit_normal_dist(site, dist, n_bins, subset_type):
     """
-    noise_params = {
-        "frequency_scaling": False,
-        "lambd_scale": 1,
-        "lambd": 6.8,
-        "kappa": 0.72,
-    }
+    :param site: Site name ("WH01", "WH02", "WH03", "WH04")
+    :param dist: Distribution type ("normal", "asym-laplace")
+    :param n_bins:
     """
-    n_data = 100
-    freqs = 1 / np.logspace(0, 1.1, n_data)
-    (
-        freqs_grid,
-        vels_grid,
-        AL_q_lower,
-        AL_q_higher,
-        norm_q_lower,
-        norm_q_higher,
-        stds,
-    ) = generate_noise_dist(freqs, noise_dist, noise_params)
 
-    freqs_grid = np.array(freqs_grid)
-    vels_grid = np.array(vels_grid)
-    curve_freqs = np.unique(freqs_grid)
-
-    data_dict = {}
-    # save points that are within the polygon
-    all_res = []
-    for ind, f in enumerate(curve_freqs):
-        res = vels_grid[np.isclose(freqs_grid, f)]
-
-        min_res = np.min(res)
-        max_res = np.max(res)
-
-        x_spacing = (max_res - min_res) / n_bins
-        xbins = list(np.flip(np.arange(-x_spacing / 2, min_res, -x_spacing))) + list(
-            np.arange(x_spacing / 2, max_res, x_spacing)
-        )
-        counts, bins, _ = plt.hist(res, bins=xbins, density=True)
-
-        q_5 = np.quantile(res, 0.05)
-        q_95 = np.quantile(res, 0.95)
-
-        # values from the distribution will be the counts of the histogram at the midpoint of the bins...
-        data_x = (bins[:-1] + bins[1:]) / 2
-        data_dict[f] = {
-            "xbins": xbins,
-            "x_data": data_x,
-            "counts": counts,
-            "res": res,
-            "quant_5": q_5,
-            "quant_95": q_95,
-        }
-
-        all_res += list(res)
-
-    # the min and max of residuals from all frequencies
-    min_res = np.min(all_res)
-    max_res = np.max(all_res)
-
-    # make sure xbins are centered on 0
-    x_spacing = (max_res - min_res) / n_bins
-    xbins = list(np.flip(np.arange(-x_spacing / 2, min_res, -x_spacing))) + list(
-        np.arange(x_spacing / 2, max_res, x_spacing)
+    df = pd.read_csv(
+        "./results/curve_fitting/scaling_params/"
+        + site
+        + "_scaling_params_True"
+        + ".csv"
     )
-    counts, bins, _ = plt.hist(all_res, bins=xbins, density=True)
-
-    # values from the distribution will be the counts of the histogram at the midpoint of the bins...
-    data_x = (bins[:-1] + bins[1:]) / 2
-
-    return min_res, max_res, curve_freqs, data_x, counts, all_res, data_dict
-
-
-def fit_simulated_dataset(n_bins=60):
-    dist = "asym-laplace"
+    x_scale = df["freq"]
 
     # read in data and get histograms...
-    all_min, all_max, curve_freqs, data_x, counts, all_res, data_dict = (
-        get_simulated_data(n_bins)
+    k_min, k_max = get_k_limits(site)
+    all_min, all_max, curve_freqs, data_x, counts, all_res, data_dict = get_data(
+        site,
+        n_bins,
+        subset_type,
+        polygon=None,
+        k_limits=[k_min, k_max],
+        y_max=1200,
+        remove_artifact=True,
+        # remove_artifact=False,
+        x_scale=x_scale,
     )
 
-    # grid search to get best distribution parameters
-    best_params = run_grid_search(dist, data_dict)
-
     # lists for storing quantiles and params at each frequency
-    q1_list, q2_list = [], []
-    params_list = []
+    std_list = []
     x = np.linspace(all_min, all_max, 100000)  # x for plotting pdf
-
     # loop over each frequency in dispersion curve frequencies
-    for ind, f in enumerate(curve_freqs):
+    for ind, f in enumerate(data_dict.keys()):
+        std = np.std(data_dict[f]["res"])
+
         fig, axs = plt.subplots(ncols=1, nrows=3, sharex=True)
 
         res = data_dict[f]["res"]
@@ -755,10 +700,18 @@ def fit_simulated_dataset(n_bins=60):
         axs[0].hist(res, bins=xbins, density=True)
         # axs[0].set_ylim([0, 0.02])
         # axs[0].set_xlim([min_res, max_res])
-        # axs[0].set_xlim([all_min, all_max])
+        axs[0].set_xlim([all_min, all_max])
 
-        data_pred = get_distribution(dist, best_params, data_dict[f]["x_data"])
-        pdf = get_distribution(dist, best_params, x)
+        data_pred = get_distribution(
+            dist,
+            [0, std],
+            data_dict[f]["x_data"],
+        )
+        pdf = get_distribution(
+            dist,
+            [0, std],
+            x,
+        )
 
         axs[0].plot(x, pdf)
         axs[1].plot(x, pdf)
@@ -771,9 +724,6 @@ def fit_simulated_dataset(n_bins=60):
         q1 = x[np.argmin(np.abs(cdf - 0.05))]
         q2 = x[np.argmin(np.abs(cdf - 0.95))]
 
-        q1_list.append(q1)
-        q2_list.append(q2)
-
         axs[1].axvline(x=q1, c="red")
         axs[1].axvline(x=q2, c="red")
 
@@ -781,31 +731,26 @@ def fit_simulated_dataset(n_bins=60):
         residuals = data_pred - data_dict[f]["counts"]
         axs[2].axhline(y=0, c="black")
         axs[2].scatter(data_dict[f]["x_data"][inds], residuals[inds])
-        # axs[2].set_ylim([-0.025, 0.025])
+        # axs[2].set_ylim([-0.25, 0.25])
 
-        params_list.append(best_params)
+        std_list.append(std)
 
         plt.savefig(
             "./figures/curve_fitting/"
-            + "sim-data"
-            + "/"
+            + site
+            + "-"
             + dist
             + "/"
-            + "sim-data"
+            + site
             + "-"
             + str(np.round(f, 2))
             + ".png"
         )
         plt.close()
 
-    params_list = np.array(params_list)
-
-    df_dict = {"freqs": curve_freqs, "q1": q1_list, "q2": q2_list}
+    df_dict = {"freqs": curve_freqs}
     if dist == "normal":
-        pass
-    elif dist == "asym-laplace":
-        df_dict["lambd"] = params_list[:, 0]
-        df_dict["kappa"] = params_list[:, 1]
+        df_dict["std"] = std_list
 
     df = pd.DataFrame(df_dict)
-    df.to_csv("./results/curve_fitting/" + "sim-data" + "-" + dist + "-params.csv")
+    df.to_csv("./results/curve_fitting/" + site + "-" + dist + "-params.csv")
