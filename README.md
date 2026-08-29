@@ -35,21 +35,43 @@ Link to other related repos. (mapping, mcmc)
 
 
 ### Dispersion curve picking
-- Polygon picking
 - Select points on the 2d histogram of f-k beamforming results to form a polygon.
-- The data within the polygon is used for fitting error distributions.
+- The data within the polygon is used for picking the dispersion curve. The dispersion curve at each frequency is the average of velocities in the fullest histogram bin within the polygon.
 - The polygon is used to reject outliers in the data, artifacts from the f-k beamforming, and unwanted noise.
+
+### Residuals
+- The residuals are a subset of the f-k beamforming results with the dispersion curve subtracted so they show the distribution of noise/error. 
+- The frequency range is selected between the kmin/2 and kmax/2 approximations.
+    - The kmax/2 cutoff is used for sites WH01 and WH02 since it also removes most of a diagonal artifact from the f-k beamforming. For sites WH03 and WH04, kmax/2 is below the data.
+    - kmax/2 and kmin/2 are used to select the frequency range, but to remove the artifact, kmax/2 is used to also remove data.
+- The velocity range is selected between 100 and 1200 m/s.
+
+#### Subset data
 
 ### Error distribution fitting
 - `./processing/distribution_fitting.py`
-- Fitting an Asymmetric Laplacian distribution to the residuals of the dispersion curve histogram...
-- Fitting with a single value for kappa, and a single value for lambda which is scaled by the spread of the data. Lambda is divided by the scale parameter, since lambda is inversely related to the spread of the distribution.
-- The scale parameter / the spread of the data is quantified as the difference between the 95th and 5th quantile of the data at a particular frequency. This is then smoothed using a 3-point rolling average, and a left- / right-sided average for the endpoints.
+- Fitting an Asymmetric Laplacian distribution to the residuals of the dispersion curve histogram.
+- lambda is inversely related to the spread of the distribution.
+- kappa is a parameter describing the skewedness of the distribution.kappa < 1 is positively tailed and kappa > 1 is negatively tailed.
+
+#### Fitting
+- To fit the data, lambda/kappa is either:
+    - independently found at each frequency
+    - a single value found by fitting at all frequencies
+    - a single value found by fitting at all frequencies, scaled by the spread/ratio scaling parameter
 - Fitting is done using a grid search, and minimizing the least squares of the data.
 - The f-k beamforming results at a particular frequency is a distribution of velocities. Fitting is done using the non-negative values of the histograms at each frequency. Minimizing the least-squares difference between these points and the corresponding point on the proposed error distribution.
-
-- `write_spread`: get the spread of the data (difference between 5th and 95th percentile) and write to csv.
 - `error_fitting_by_full_dataset`: get error distribution parameters by using a grid search to get best fit. Save df to file with quantiles (to compare with spread) 
+
+
+#### Scaling parameters
+- The scale parameter / the spread of the data is quantified as the difference between the 95th and 5th quantile of the data at a particular frequency. This is then smoothed using a 3-point rolling average, and a left- / right-sided average for the endpoints.
+- Smoothed using bandwidth parameter from f-k beamforming.
+
+- `get_scaling_params` (in `./src/processing/distribution_fitting.py`): Get 5th and 95th quantiles for the data at each frequency, as well as the spread, ratio, smoothed spread, and smoothed ratio. Save to csv at `./results/curve_fitting/scaling_params/WH0*_scaling_params.csv`
+
+#### Model distributions
+- Use fitting to get model distributions used for synthetic data inversions.
 
 
 ## Plotting
@@ -68,4 +90,3 @@ List of figures and which file is used to create them.
 ### Dispersion curve
 - `./plotting/dispersion_curve_plotting.py`
 - Plot residuals and data spread
-- Fit an exponential to the spread of the data to use for more parameterization of the data / to create synthetic data.

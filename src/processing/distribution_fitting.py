@@ -44,7 +44,7 @@ def smooth_scaling_params(x_freqs, y_spread, y_ratio, bw):
     return smoothed_y_spread, smoothed_y_ratio
 
 
-def get_scaling_params(site, subset_type, y_max, remove_artifact):
+def get_scaling_params(site, subset_type, y_min, y_max, remove_artifact):
     max_path, curve_path, polygon_path = get_path(site)
 
     df_max = read_max_file(max_path)
@@ -72,6 +72,7 @@ def get_scaling_params(site, subset_type, y_max, remove_artifact):
         y_curve,
         polygon=None,
         k_limits=[k_min, k_max],
+        y_min=y_min,
         y_max=y_max,
         remove_artifact=remove_artifact,
     )
@@ -431,126 +432,6 @@ def get_best_params(params, dist, data_dict, lambd_scale, kappa_scale):
         # print(best_lsq, best_params, "\n")
 
     return best_params
-
-
-def optimization_fitting(site, n_bins, polygon):
-    """
-    Test doing fitting using scipy.optimize curve_fit.
-    """
-
-    def def_asymmetric_laplacian(scale):
-        def func(x, lambd, kappa):
-            mu = 0
-            lambd = scale * lambd
-            s = np.sign(x - mu)
-            data_pred = (lambd / (kappa + 1 / kappa)) * np.exp(
-                -(x - mu) * lambd * s * kappa**s
-            )
-
-            return data_pred
-
-        return func
-
-    # get scaling parameters from fitting data spread
-    all_min, all_max, data_dict, scale = get_data(site, n_bins, polygon=polygon)
-
-    freqs = data_dict.keys()
-    q1_list, q2_list = [], []
-    x = np.linspace(all_min, all_max, 100000)
-    for ind, f in enumerate(freqs):
-        param, param_cov = curve_fit(
-            def_asymmetric_laplacian(scale[ind]),
-            data_dict[f]["x"],
-            data_dict[f]["counts"],
-            method="dogbox",
-        )
-        fig, axs = plt.subplots(ncols=1, nrows=3, sharex=True)  # , figsize=(3.5, 2.5)
-        # plt.clf()
-
-        res = data_dict[f]["res"]
-
-        min_res = np.min(res)
-        max_res = np.max(res)
-
-        x_spacing = (max_res - min_res) / n_bins
-        xbins = list(np.flip(np.arange(-x_spacing / 2, min_res, -x_spacing))) + list(
-            np.arange(x_spacing / 2, max_res, x_spacing)
-        )
-
-        # xbins = list(np.arange(min_res, 0, x_spacing)) + list(
-        #     np.arange(0, max_res, x_spacing)
-        # )
-        # print(xbins, "\n")
-        # xbins = np.linspace(min_res, max_res, n_bins)
-        axs[0].hist(res, bins=xbins, density=True)
-        # axs[0].set_ylim([0, 0.02])
-        # axs[0].set_xlim([min_res, max_res])
-        axs[0].set_xlim([all_min, all_max])
-
-        lambd, kappa = param
-        data_pred = asymmetric_laplacian(data_dict[f]["x"], lambd, kappa, scale[ind])
-        pdf = asymmetric_laplacian(x, lambd, kappa, scale[ind])
-
-        # plot_distribution(axs, x, pdf, cdf, dist_q1, dist_q2, dist_peak)
-        axs[0].plot(x, pdf)
-        axs[1].plot(x, pdf)
-
-        # save the quantiles for the saved distributions
-        # integrate distribution
-        dx = x[1] - x[0]
-        cdf = np.cumsum(((pdf[:-1] + pdf[1:]) / 2) * dx)
-        # get quantiles and peak
-        q1 = x[np.argmin(np.abs(cdf - 0.05))]
-        q2 = x[np.argmin(np.abs(cdf - 0.95))]
-
-        q1_list.append(q1)
-        q2_list.append(q2)
-
-        axs[1].axvline(x=q1, c="red")
-        axs[1].axvline(x=q2, c="red")
-
-        inds = data_dict[f]["counts"] != 0
-        residuals = data_pred - data_dict[f]["counts"]
-        axs[2].axhline(y=0, c="black")
-        axs[2].scatter(data_dict[f]["x"][inds], residuals[inds])
-        axs[2].set_ylim([-0.025, 0.025])
-
-        # plt.suptitle(str(dist_params))
-        plt.suptitle(
-            "freq: " + str(np.round(f, 2)) + "\n"
-            "lambda: "
-            + str(np.round(lambd, 4))
-            + ", "
-            + "kappa: "
-            + str(np.round(kappa, 4))
-            + ", "
-            + "scale: "
-            + str(scale[ind])
-        )
-
-        plt.savefig(
-            "./figures/curve_fitting/"
-            + site
-            + "/asym-laplace-all/"
-            + site
-            + "-"
-            + str(np.round(f, 2))
-            + "-"
-            + str(polygon)
-            + ".png"
-        )
-        plt.close()
-
-    df = pd.DataFrame({"freqs": freqs, "q1": q1_list, "q2": q2_list})
-    df.to_csv(
-        "./figures/curve_fitting/"
-        + site
-        + "/asym-laplace-all/"
-        + site
-        + "-"
-        + str(polygon)
-        + ".csv"
-    )
 
 
 def error_distribution_fitting_by_full_dataset(
